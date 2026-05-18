@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Up & Down the River Tournament</title>
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <style>
+        :root { --primary: #2c3e50; --accent: #e74c3c; --success: #27ae60; --bg: #f4f7f6; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); padding: 10px; color: var(--primary); margin: 0; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        /* Sync & Settings */
+        .settings-panel { background: #eee; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; border-left: 5px solid var(--primary);position: relative; }
+        .admin-only { display: none; }
+        .sync-indicator { font-size: 0.8rem; color: #7f8c8d; text-align: center; margin-bottom: 10px; font-weight: bold; }
+
+        /* New Side-by-Side Settings Layout */
+        .settings-flex { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; }
+        .settings-inputs { max-width: calc(100% - 120px); flex: 1; }
+        
+        /* Shrunken QR Code Styling */
+        .qr-container { position: absolute; top: 15px; right: 15px; text-align: center; padding: 8px; background: white; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        #qr-code-img { display: block; margin: 0 auto; width: 90px; height: 90px;}
+        .qr-label { font-size: 0.55rem; margin-bottom: 4px; font-weight: bold; text-transform: uppercase; color: #7f8c8d;}
+
+        /* Game UI */
+        .round-header { background: var(--primary); color: white; padding: 12px; border-radius: 8px; text-align: center; margin-bottom: 15px; }
+        .trump-indicator { font-size: 2.2rem; display: block; margin-top: 5px; font-weight: bold; }
+        .suit-H, .suit-D { color: #ff7675; } .suit-S, .suit-C { color: #74b9ff; } .suit-NT { color: #fdcb6e; }
+
+        .input-grid { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; justify-content: center; }
+        .input-card { background: #f8f9fa; padding: 10px; border-radius: 8px; min-width: 90px; text-align: center; border: 2px solid #ddd; }
+        .input-card.is-dealer { border-color: var(--accent); background: #fff5f5; }
+        .input-card input { width: 60px; padding: 10px; text-align: center; border: 1px solid #ccc; border-radius: 6px; font-size: 1.2rem; }
+        
+        button { width: 100%; max-width: 350px; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px 0; }
+        .btn-danger { background: var(--accent); }
+        .warning { color: white; background: var(--accent); font-weight: bold; padding: 8px 15px; border-radius: 20px; display: none; text-align: center; }
+
+        .matrix-wrapper { width: 100%; overflow-x: auto; border: 1px solid #ddd; border-radius: 8px; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th, td { border: 1px solid #eee; padding: 8px; text-align: center; }
+        
+        /* Unified Table Styles */
+        .standard-table { width: 100% !important; border-collapse: collapse; margin-top: 15px; background: white; }
+        .standard-table th { background-color: var(--primary); color: white; padding: 12px 8px; font-size: 16px; }
+        .standard-table td { padding: 10px 8px; border-bottom: 1px solid #ddd; }
+
+        /* Apply this to the divs wrapping your tables */
+        .standard-container { padding: 10px; text-align: left; width: 100%; box-sizing: border-box; border-top: 2px solid #eee; }
+
+        /* Tournament Standings */
+        .stats-container { overflow-x: auto; margin-top: 30px; border-top: 2px solid #eee; padding-top: 20px; width: 100%; }
+        .tStats-table { width: 100%; min-width: 700px; }
+        .tStats-table th { background: var(--primary); color: white; padding: 12px; }
+        .row-label { font-weight: bold; background: #f8f9fa; text-align: left; width: 300px; padding-left: 15px; border-right: 2px solid #ddd; }
+        .group-header { background: #dfe6e9 !important; font-weight: 800; text-transform: uppercase; color: #2d3436; font-size: 0.75rem; text-align: left !important; padding: 12px; }
+        .stat-val { font-family: 'Courier New', monospace; font-size: 1.1rem; }
+        .leaderboard-table th { background: var(--primary); color: white; padding: 12px; }
+
+        #modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
+        .modal-content { background: white; margin: 5% auto; padding: 20px; width: 90%; max-width: 600px; border-radius: 12px; }
+        .made { background: #e8f5e9; font-weight: bold; }
+        .missed { background: #ffebee; color: var(--accent); }
+        .editing-row { background-color: #fff3cd !important; }
+
+        .admin-only, .scorekeeper-only { display: none; }
+
+        @keyframes shimmer {
+            0% { background-position: -468px 0; }
+            100% { background-position: 468px 0; }
+        }
+
+        .skeleton {
+            height: 20px;
+            background: #f6f7f8;
+            background-image: linear-gradient(to right, #f6f7f8 0%, #edeef1 20%, #f6f7f8 40%, #f6f7f8 100%);
+            background-repeat: no-repeat;
+            background-size: 800px 104px;
+            display: inline-block;
+            position: relative;
+            animation: shimmer 1.2s infinite linear;
+            border-radius: 4px;
+            width: 100%;
+        }
+
+        #setup-controls {
+            display: none; 
+            max-width: 100%;
+            margin: 10px 0 20px 0;
+            text-align: left;
+            background: transparent; 
+            padding: 0;               
+            border: none;             
+        }
+
+        #setup-controls input {
+            width: 100%;             
+            padding: 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        .sync-indicator {
+            text-align: right;       
+            padding: 5px 0;
+        }
+
+        .scorekeeper-flex { display: none; 
+            max-width: 100%;
+            margin: 10px 0 20px 0;
+            text-align: left;
+            background: transparent; 
+            padding: 0;               
+            border: none
+        }
+    </style>
+</head>
+<body>
+
+<div id="modal">
+    <div class="modal-content">
+        <h2 style="text-align:center">Game Summary</h2>
+        <div id="modal-body"></div>
+        <button onclick="saveGameToStats()" style="display:block; margin: 20px auto;">Finalize & Save</button>
+    </div>
+</div>
+
+<div class="container" style="position: relative; padding-top: 5px;">
+    
+    <!-- HEADER AREA: min-height controlled to keep settings just above banner -->
+    <div id="header-area" style="position: relative; min-height: 100px; margin-bottom: 5px;">
+        
+        <!-- Overlapping Logo (Left) -->
+        <div style="position: absolute; left: 0; top: -15px; z-index: 10; pointer-events: none;">
+            <!-- Increased to 150px to match the original "large" look -->
+            <img src="icon.png" alt="Icon" style="height: 150px !important; width: auto !important; display: block;">
+        </div>
+
+        <!-- Right-side Controls: Anchored to the bottom-right -->
+        <div style="position: absolute; right: 0; bottom: 5px; display: flex; flex-direction: column; align-items: flex-end; gap: 0px; z-index: 20;">
+            <!-- Settings Icon -->
+            <button onclick="toggleSettings()" style="width:30px; height:30px; padding:0; background:none; color:black; font-size:1.5rem; border: none; cursor: pointer; opacity: 0.7; line-height: 1;">⚙️</button>
+            
+            <!-- Sync Status / Role Badge -->
+            <div id="sync-status" class="sync-indicator" style="position: static; margin-bottom: -20px;">Initializing...</div>
+        </div>
+    </div>
+
+    <!-- TOP BANNER (Hidden by default using display: none) -->
+    <div id="game-info-banner" style="display: none; background-color: var(--primary); color: white; min-height: 50px; justify-content: center; align-items: center; border-radius: 8px; margin-bottom: 15px; position: relative;">
+        <div id="banner-text" style="text-transform: uppercase; font-weight: bold; display: flex; gap: 15px; align-items: center; font-size: 0.9rem;">
+            <span id="display-cards"></span>
+            <span>•</span>
+            <span id="display-trump" style="font-size: 1.5rem; line-height: 1; margin-left: 5px;"></span>
+            <span>•</span>
+            <span id="display-round"></span>
+        </div>
+    </div>
+
+    <div id="settings-panel" class="settings-panel">
+        <h4>Access Configuration</h4>
+        
+        <div class="qr-container">
+            <div class="qr-label">Share App</div>
+            <img id="qr-code-img" src="" alt="QR Code">
+        </div>
+
+        <div class="settings-inputs">
+            <label>Your Role:</label>
+            <select id="role-select" 
+                    onchange="document.getElementById('admin-key-container').style.display = (this.value === 'ADMIN' ? 'block' : 'none')" 
+                    style="width: fit-content; padding: 10px; margin-bottom: 10px; border-radius: 8px; display: block;">
+                <option value="VIEWER">Viewer (Read-Only Cloud)</option>
+                <option value="SCOREKEEPER">ScoreKeeper (Local Write)</option>
+                <option value="ADMIN">Admin (Cloud Write)</option>
+            </select>
+
+            <div id="admin-key-container" style="display:none;">
+                <label>Admin Key:</label>
+                <input type="password" id="admin-key" placeholder="Enter password" style="width:100%; margin-bottom:10px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box;">
+            </div>
+        </div>
+
+        <label style="display: block;">Google Web App URL:</label>
+        <input type="text" id="sync-url" placeholder="https://script.google.com/..." style="width:100%; margin-bottom:15px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box;">
+        
+        <button onclick="saveSettings()">Save & Sync</button>       
+    </div>
+
+    <div id="setup-view">
+        <div id="sync-status" class="sync-indicator"></div>
+
+        <div id="resume-msg" style="display:none; text-align:center; padding:5px; background:#fff3cd; margin-bottom:10px; border-radius:8px;">
+            Unfinished game found. <button onclick="resumeGame()" style="width:auto; padding:5px;">Resume</button>
+        </div>
+        
+        <div id="setup-controls"> 
+            <input type="text" id="player-names" value="Mom, Georgia, Lucy, Jack, Dad">                        
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; margin-bottom: 20px;">
+    
+            <!-- ONLY SCOREKEEPERS SEE THIS -->
+            <button onclick="startGame()" class="scorekeeper-flex-item" 
+                    style="flex: 1; 
+                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
+                    ">
+                Start New Game
+            </button>
+
+            <!-- EVERYONE SEES THIS -->
+            <button onclick="showLeaderboard()" id="public-leaderboard-btn"
+                    style="flex: 1; 
+                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
+                    ">
+                Leaderboard
+            </button>
+            
+            <!-- ONLY SCOREKEEPERS SEE THIS -->
+            <button onclick="finalizeTournament()" class="scorekeeper-flex-item" 
+                    style="flex: 1; 
+                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
+                    ">
+                Finalize Tournament
+            </button>
+        </div>
+
+        <div class= "standard-container" border-top: 2px solid #eee; padding-top: 15px;>
+            <h3 style="text-align:center; margin-bottom: 15px;">🏆 Tournament Standings</h3>            
+            <table class="standard-table">
+                <thead id="tStats-head"></thead>
+                <tbody id="tStats-body"></tbody>
+            </table>
+            
+            <button onclick="clearStats()" class="scorekeeper-only btn-danger" style="margin-top:20px; width:auto; padding:8px; font-size:0.7rem;">
+                Reset Current Tournament
+            </button>
+        </div>
+
+    </div>
+
+    <div id="game-view" style="display:none; padding: 15px;">        
+        <div id="input-grid" class="input-grid" style="margin-top: 20px;"></div>
+        <div class="action-area" style="text-align:center;">
+            <div id="bid-warning" class="warning"></div>
+            <button id="action-btn" onclick="processPhase()">Lock Bids</button>
+            <button onclick="saveState(); localStorage.setItem('skip_next_fetch', 'true'); location.reload();" style="background:#7f8c8d; width:auto; padding:10px;">Save & Exit</button>            
+        </div>
+        <div class="matrix-wrapper"><table><thead id="matrix-head"></thead><tbody id="matrix-body"></tbody></table></div>
+    </div>
+
+    <div id="leaderboard-view" style="display:none; padding: 20px;">
+        <button onclick="hideLeaderboard()" style="width: auto; padding: 10px 20px; margin-bottom: 20px;">← Back</button>      
+        
+        <div id="leaderboard-container" class="standard-container">
+            <h3 style="text-align:center">🏆 All-Time Leaderboard</h3>
+            <table id="leaderboard-table" class="standard-table">
+                <thead id="leaderboard-head"></thead>
+                <tbody id="leaderboard-body"></tbody>
+            </table>
+            
+            
+            <button onclick="clearAllTimeHistory()" class="scorekeeper-only btn-danger" style="margin-top:20px; width:auto; padding:8px; font-size:0.7rem;">Clear All-Time History</button>
+            
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // --- GLOBAL STATE ---
+    let players = [], currentIdx = 0, phase = 'BIDDING', isEditing = false, editRoundIdx = null;
+    let currentTournamentID = parseInt(localStorage.getItem('lastTournamentID')) || 1;
+    let currentRounds = []; 
+    let maxCards = 10; 
+    let IS_ADMIN = false;
+    let IS_SCOREKEEPER = false;
+    let threshold = 130; //INITIAL VALUE UPDATES LATER BASED ON PLAYER COUNT
+    let CURRENT_CONFIG = { url: "", key: "" };
+    let allTime = 'river_v3_allTime' // to change this might need to change google sheet script
+    let tournamentStats = 'river_v3_tStats'
+    let skipFetch = false
+
+    // --- CONSTANTS ---    
+    const SUITS = [
+        {l:'♥', c:'suit-H'}, {l:'♣', c:'suit-C'},
+        {l:'♦', c:'suit-D'}, {l:'♠', c:'suit-S'}, {l:'NT', c:'suit-NT'}
+    ];
+    
+    const ADMIN_SECRET = "RiverAdmin2026";
+    const SCOREKEEPER_KEY = "River2026";
+    const DEFAULT_URL = "https://script.google.com/macros/s/AKfycbzjlG_IqO5bA-IfX5IjzbXv5k-SY3mxYn_oh1ESaasRiLwM3hmOXfo6xV3OtrdbnRZO8Q/exec";    
+
+    // --- CACHED UI ELEMENTS ---
+    const UI = {
+        setupContainer: document.getElementById('setup-container'),
+        gameContainer: document.getElementById('game-container'),
+        leaderboardContainer: document.getElementById('leaderboard-container'),
+        playerInput: document.getElementById('player-names'),
+        actionBtn: document.getElementById('action-btn'),
+        status: document.getElementById('sync-status'),
+        inputGrid: document.getElementById('input-grid'),        
+        warning: document.getElementById('bid-warning'),
+        bannerRound: document.getElementById('display-round'),
+        bannerCards: document.getElementById('display-cards'),
+        bannerTrump: document.getElementById('display-trump'),
+        role: document.getElementById('role-select'),
+        tStatsBody: document.getElementById('tStats-body')
+    };
+       
+
+    window.onload = async () => {        
+        checkPermissions();        
+        generateQRCode();
+        loadStats(tournamentStats, 'tStats-body', 'tStats-head');
+
+        const resumeMsg = document.getElementById('resume-msg');
+        if (localStorage.getItem('river_v3_currentGame') && IS_SCOREKEEPER) {
+            resumeMsg.style.display = 'block';
+        } else {
+            resumeMsg.style.display = 'none';
+        }
+
+        document.getElementById('setup-view').style.display = 'block';
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+            .then(() => console.log("Service Worker Registered"));
+        }
+    };
+
+    async function fetchCloudData() {
+
+        UI.tStatsBody.innerHTML = `
+            <tr><td colspan="5"><div class="skeleton"></div></td></tr>
+            <tr><td colspan="5"><div class="skeleton"></div></td></tr>
+            <tr><td colspan="5"><div class="skeleton"></div></td></tr>
+        `;
+        UI.status.innerHTML = '<span class="spinner"></span> Fetching Global Records...';
+
+        try {
+            const response = await fetch(CURRENT_CONFIG.url);
+            if (!response.ok) throw new Error("Network Response Fail");
+            
+            const data = await response.json();
+            localStorage.setItem(tournamentStats, JSON.stringify(data));            
+            localStorage.setItem(allTime, JSON.stringify(data));
+
+        } catch (e) {
+            console.error("Sync Error:", e);
+            UI.status.innerText = "⚠ Sync Failed (Using Local Cache)";            
+        }
+    }
+
+    async function pushCloudData(data) {
+        if (!IS_ADMIN) return;
+        UI.status.innerText = "Pushing to Cloud...";
+        try {
+            const res = await fetch(CURRENT_CONFIG.url, {
+                method: 'POST',
+                body: JSON.stringify({ key: CURRENT_CONFIG.key, data: JSON.stringify(data) })
+            });
+            UI.status.innerText = "✓ Cloud Updated";
+        } catch (e) {
+            console.error("Upload Error:", e);
+            alert("Cloud Save Failed. Local copy updated.");
+        }
+    }
+
+    function generateQRCode() {
+        const driveUrl = "https://jamesrwatt.github.io/Up-and-Down-the-River-Multi-Tournament/"
+        const qrImg = document.getElementById('qr-code-img');
+        // Switched to api.qrserver.com for reliable generation
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${driveUrl}`;
+    }
+
+    function toggleSettings() {
+        const p = document.getElementById('settings-panel');
+        p.style.display = p.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function saveSettings() {        
+        const role = document.getElementById('role-select').value;
+        const inputUrl = document.getElementById('sync-url').value.trim();
+        let key = "";
+
+        if (role === 'ADMIN') {
+            key = document.getElementById('admin-key').value.trim();
+        } else if (role === 'SCOREKEEPER') {
+            key = SCOREKEEPER_KEY; // Automatically assign the public SK key
+        }
+
+        const config = {
+            url: inputUrl || DEFAULT_URL,
+            key: key
+        };
+ 
+        localStorage.setItem('river_config', JSON.stringify(config));        
+        location.reload();
+    }
+
+     function checkPermissions() {
+        // 1. Pull the config once
+        const savedConfig = JSON.parse(localStorage.getItem('river_config') || "{}");
+        CURRENT_CONFIG = {
+            url: savedConfig.url || DEFAULT_URL,
+            key: savedConfig.key || ""
+        };
+
+        document.getElementById('sync-url').value = CURRENT_CONFIG.url;
+        document.getElementById('admin-key').value = CURRENT_CONFIG.key;
+
+        // 2. Set the global permission flags
+        IS_ADMIN = (CURRENT_CONFIG.key === ADMIN_SECRET);
+        IS_SCOREKEEPER = (CURRENT_CONFIG.key === SCOREKEEPER_KEY || IS_ADMIN);
+
+        // Toggle Admin/Scorekeeper specific UI elements
+        document.querySelectorAll('.admin-only').forEach(el => el.style.display = IS_ADMIN ? 'block' : 'none');
+        document.querySelectorAll('.scorekeeper-only, .scorekeeper-flex-item').forEach(el => {
+            el.style.display = IS_SCOREKEEPER ? 'block' : 'none';
+        });
+
+        document.getElementById('setup-controls').style.display = IS_SCOREKEEPER ? 'block' : 'none';
+        document.getElementById('admin-key-container').style.display = (UI.role.value === 'ADMIN') ? 'block' : 'none';
+
+        //  Style the Status Indicator
+        UI.status.style.display = "inline-block";
+        UI.status.style.float = "right"; 
+        UI.status.style.padding = "4px 12px";
+        UI.status.style.borderRadius = "15px";
+        UI.status.style.fontSize = "0.75rem";
+
+        // 3. Update UI based on these flags
+        if (IS_ADMIN) {
+            UI.role.value = 'ADMIN';
+            fetchCloudData();
+            UI.status.style.background = "#e8f5e9";
+            UI.status.style.color = "#27ae60";
+            UI.status.innerText = "🛡️ Admin";            
+        } else if (IS_SCOREKEEPER) {
+            UI.role.value = 'SCOREKEEPER';
+            UI.status.style.background = "#e3f2fd";
+            UI.status.style.color = "#2196f3";
+            UI.status.innerText = "✍️ ScoreKeeper";
+        } else {
+            UI.role.value = 'VIEWER';
+            fetchCloudData();
+            UI.status.style.background = "#eee";
+            UI.status.style.color = "#777";
+            UI.status.innerText = "👁️ Viewer";            
+        }       
+    }
+    
+    function startGame() {
+        localStorage.removeItem('river_v3_currentGame');
+        document.getElementById('resume-msg').style.display = 'none';
+        
+        const names = document.getElementById('player-names').value.split(',').filter(n=>n.trim());
+        players = names.map(n=>({ name: n.trim(), total: 0, history: [], currentBid: 0 }));
+        
+        setRoundStructure();     
+
+        currentIdx = 0; 
+        phase = 'BIDDING';
+
+        localStorage.setItem('skip_next_fetch', 'true'); 
+        initUI();
+    }
+
+    function resumeGame() {
+        const data = JSON.parse(localStorage.getItem('river_v3_currentGame'));
+        players = data.players; 
+        currentIdx = data.currentIdx; 
+        phase = data.phase;
+
+        setRoundStructure();
+        
+        initUI(); 
+        refreshTable();
+    }
+
+    function initUI() {
+        document.getElementById('setup-view').style.display = 'none';
+        document.getElementById('game-view').style.display = 'block';
+        
+        // SHOW THE BANNER and HIDE THE OLD HEADER AREA
+        document.getElementById('game-info-banner').style.display = 'flex';
+        document.getElementById('header-area').style.display = 'none';
+
+        const head = document.getElementById('matrix-head');
+        head.innerHTML = `<tr><th>Edit</th><th>Rd</th><th>T</th>` + 
+            players.map(p => `<th colspan="3">${p.name}</th>`).join('') + 
+            `</tr><tr><th></th><th></th><th></th>` + 
+            players.map(()=>`<td>B</td><td>T</td><td>Σ</td>`).join('') + `</tr>`;
+            // players.map(()=>`<td>Bid</td><td>Tricks</td><td>Score</td>`).join('') + `</tr>`;
+        
+        renderRound();
+    }
+
+    function setRoundStructure() {
+        maxCards = Math.min(10, Math.floor(52 / players.length));
+        const up = Array.from({length: maxCards}, (_, i) => i + 1);
+        const down = [...up].reverse().slice(1);
+        currentRounds = up.concat(down);
+        threshold = (10 * ( 2 * maxCards - 1) - 20)  - (10 * players.length);
+    }
+
+    function renderRound() {
+        const idx = isEditing ? editRoundIdx : currentIdx;        
+        setRoundStructure();
+        const cards = currentRounds[idx], trump = getTrump(idx);
+        
+        // Update Banner using Cached UI
+        UI.bannerRound.innerText = `ROUND ${idx + 1} / ${currentRounds.length}`;
+        UI.bannerCards.innerText = `${cards} CARDS`;
+        UI.bannerTrump.innerText = trump.l;
+        UI.bannerTrump.className = trump.c;
+        
+        // Update Input Grid
+        UI.inputGrid.innerHTML = players.map((p, i) => `
+            <div class="input-card ${i === (idx % players.length) ? 'is-dealer' : ''}">
+                <label>${p.name}</label>
+                <input type="number" id="p-input-${i}" min="0" max="${cards}" 
+                    placeholder="${phase === 'SCORING' ? (isEditing ? p.history[idx].bid : p.currentBid) : 0}" 
+                    oninput="validate()">
+            </div>
+        `).join('');
+        
+        UI.actionBtn.innerText = phase === 'BIDDING' ? 'Lock Bids' : 'Submit Results';
+        validate();
+
+    }
+
+    function validate() {
+        const idx = isEditing ? editRoundIdx : currentIdx;
+        const cards = currentRounds[idx], btn = UI.actionBtn;
+
+        const inputs = players.map((_, i) => {
+            const val = document.getElementById(`p-input-${i}`).value;
+            return val === "" ? (phase === 'SCORING' ? (isEditing ? players[i].history[idx].bid : players[i].currentBid) : 0) : parseInt(val);
+        });
+
+        const total = inputs.reduce((a, b) => a + b, 0);
+        let error = "";
+
+        if (inputs.some(v => v > cards)) error = "Bid > Cards!";
+        else if (phase === 'BIDDING' && total === cards) error = "Dealer Rule!";
+        else if (phase === 'SCORING' && total !== cards) error = `Must total ${cards}!`;
+
+        if (error) {
+            UI.warning.innerText = error;
+            UI.warning.style.display = 'block';
+            UI.actionBtn.disabled = true;
+        } else {
+            UI.warning.style.display = 'none';
+            UI.actionBtn.disabled = false;
+        }
+    }
+
+    function processPhase() {
+        const idx = isEditing ? editRoundIdx : currentIdx;
+        const inputs = players.map((p, i) => {
+            const v = document.getElementById(`p-input-${i}`).value;
+            return v === "" ? (phase==='SCORING'?(isEditing?p.history[idx].bid:p.currentBid):0) : parseInt(v);
+        });
+        if (phase === 'BIDDING') {
+            if (isEditing) players.forEach((p,i)=>p.history[idx].bid=inputs[i]);
+            else players.forEach((p,i)=>p.currentBid=inputs[i]);
+            phase = 'SCORING'; refreshTable(); renderRound();
+        } else {
+            players.forEach((p, i) => {
+                const tricks = inputs[i], bid = isEditing ? p.history[idx].bid : p.currentBid;
+                if (isEditing) p.history[idx] = {bid, tricks, pts: (tricks === bid ? 10+tricks : tricks), set: tricks !== bid};
+                else p.history.push({bid, tricks, pts: (tricks === bid ? 10+tricks : tricks), set: tricks !== bid});
+            });
+            recalculate();
+            if (isEditing) { isEditing = false; phase = 'BIDDING'; } else { currentIdx++; phase = 'BIDDING'; }
+            refreshTable();
+            if (currentIdx >= currentRounds.length) endGame(); else renderRound();
+        }
+        saveState();
+    }
+
+    function recalculate() { players.forEach(p => { let s = 0; p.history.forEach(h => { s += h.pts; h.totalAtRound = s; }); p.total = s; }); }
+
+    function refreshTable() {
+        const body = document.getElementById('matrix-body'); 
+        body.innerHTML = "";
+        
+        players[0].history.forEach((_, r) => {
+            // Use currentRounds[r] to display the correct card count in the "Rd" column
+            let row = `<tr class="${(isEditing && r===editRoundIdx)?'editing-row':''}">
+                <td><button onclick="editRound(${r})">✏️</button></td>
+                <td>${currentRounds[r]}</td> 
+                <td class="${getTrump(r).c}">${getTrump(r).l[0]}</td>`;
+                
+            players.forEach(p => {
+                row += `<td class="${p.history[r].set?'missed':'made'}">${p.history[r].bid}</td>
+                        <td class="${p.history[r].set?'missed':'made'}">${p.history[r].tricks}</td>
+                        <td style="font-weight:bold">${p.history[r].totalAtRound}</td>`;
+            });
+            body.innerHTML += row + "</tr>";
+        });
+    }
+
+    function editRound(r) { isEditing = true; editRoundIdx = r; phase = 'BIDDING'; refreshTable(); renderRound(); }
+    
+    function getTrump(idx) {
+        const peakIdx = maxCards - 1
+
+        // No Trump Logic (Middle Rounds)
+        if (idx === peakIdx - 2 || idx === peakIdx || idx === peakIdx + 2) {
+            return SUITS[4]; // NT
+        }
+
+        // Adjust suit rotation to skip the 3 NT rounds in the middle
+        let suitIdx;
+        if (idx < peakIdx - 2) {
+            suitIdx = idx;
+        } else if (idx === peakIdx - 1) {
+            suitIdx = idx - 1;
+        } else if (idx === peakIdx + 1) {
+            suitIdx = idx + 2;
+        } else {
+            suitIdx = idx - 3;
+        }
+        
+        return SUITS[suitIdx % 4];
+    }
+    
+    function saveState() {
+        const gameState = {
+            players: players,
+            currentIdx: currentIdx, 
+            phase: phase            
+        };
+        localStorage.setItem('river_v3_currentGame', JSON.stringify(gameState));
+    }
+
+    function endGame() {
+        const sorted = [...players].sort((a,b) => b.total - a.total);
+        let html = `<table style="width:100%"><tr><th>Rank</th><th>Player</th><th>Score</th><th>T-Pts</th><th>Pen</th></tr>`;
+        
+        sorted.forEach((p, i) => {
+            // TIE LOGIC: Find the first player with this score to determine T-Pts
+            const firstIdxWithScore = sorted.findIndex(x => x.total === p.total);
+            const tPts = players.length - firstIdxWithScore; 
+            
+            const penalty = (p.total < threshold ? 1 : 0) + (p.name === sorted[sorted.length-1].name ? 1 : 0);
+            
+            // Display rank normally (1, 2, 3...) but keep T-Pts tied
+            html += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.total}</td><td>${tPts}</td><td>$${penalty}</td></tr>`;
+        });
+        document.getElementById('modal-body').innerHTML = html;
+        document.getElementById('modal').style.display = 'block';
+    }
+
+    async function saveGameToStats() {
+        if (window.isSaving) return;
+        window.isSaving = true;
+        
+        updateStats(tournamentStats);
+        updateStats(allTime);
+
+        localStorage.removeItem('river_v3_currentGame');
+
+            // CRITICAL: Block cloud fetch on the next refresh so local stats show up
+            localStorage.setItem('skip_next_fetch', 'true');
+
+            if (IS_ADMIN && CURRENT_CONFIG.url) {
+                try {
+                    await fetch(CURRENT_CONFIG.url, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            key: CURRENT_CONFIG.key,
+                            type: "ARCHIVE_GAME",
+                            gameData: { players: players },
+                            tournamentID: currentTournamentID
+                        })
+                    });
+                } catch (cloudErr) {
+                    console.warn("Cloud push failed.");
+                }
+            } else {
+                // SCOREKEEPER: Protection for local stats display after save
+                localStorage.setItem('skip_next_fetch', 'true');
+            }
+
+            location.reload(); 
+    }
+
+    async function updateStats(stats) {
+        try {
+            let tStats = JSON.parse(localStorage.getItem(stats) || "{}");
+            const sorted = [...players].sort((a, b) => b.total - a.total);        
+            const loserName = sorted[sorted.length - 1].name;
+
+            players.forEach(p => {
+                if (!tStats[p.name]) {
+                    tStats[p.name] = {
+                        tPoints: 0, lossesMoney: 0, penaltyMoney: 0, totalTricks: 0, totalSets: 0,
+                        gamesPlayed: 0, gamePoints: 0, bestScore: 0, worstScore: 999,
+                        maxTricksGame: 0, minTricksGame: 999, maxSetsGame: 0, minSetsGame: 99,
+                        maxMoneyGame: 0, tPointsDist: {}, handHistory: [], payHistory: [],
+                        firstPlaceHistory: [], lastPlaceHistory: [], 
+                        maxWinHandStreak: 0, maxLossHandStreak: 0 
+                    };
+                }
+                
+                let currentWinStreak = 0;
+                let currentLossStreak = 0;
+                let s = tStats[p.name];                
+                const tPts = players.length - sorted.findIndex(x => x.total === p.total);
+                const penalty = p.total < threshold ? 1 : 0;
+                const loss = p.name === loserName ? 1 : 0;
+                const gTricks = p.history.reduce((a, b) => a + (Number(b.tricks) || 0), 0);
+                const gSets = p.history.reduce((a, b) => a + (b.set ? 1 : 0), 0);
+
+                s.tPoints += tPts; 
+                s.lossesMoney += loss; 
+                s.penaltyMoney += penalty;
+                s.totalTricks += gTricks; 
+                s.totalSets += gSets; 
+                s.gamesPlayed++; 
+                s.gamePoints += p.total;
+                s.bestScore = Math.max(s.bestScore, p.total); 
+                s.worstScore = Math.min(s.worstScore, p.total);
+                s.maxTricksGame = Math.max(s.maxTricksGame, gTricks); 
+                s.minTricksGame = Math.min(s.minTricksGame, gTricks);
+                s.maxSetsGame = Math.max(s.maxSetsGame, gSets); 
+                s.minSetsGame = Math.min(s.minSetsGame, gSets);
+                s.maxMoneyGame = Math.max(s.maxMoneyGame, loss + penalty);
+                s.tPointsDist[tPts] = (s.tPointsDist[tPts] || 0) + 1;
+                s.payHistory.push((loss + penalty) > 0);
+
+                p.history.forEach(h => {
+                    const isWin = !h.set;
+                    s.handHistory.push(isWin);
+
+                    if (isWin) {
+                        currentWinStreak++;
+                        currentLossStreak = 0;
+                        s.maxWinHandStreak = Math.max(s.maxWinHandStreak || 0, currentWinStreak);
+                    } else {
+                        currentLossStreak++;
+                        currentWinStreak = 0;
+                        s.maxLossHandStreak = Math.max(s.maxLossHandStreak || 0, currentLossStreak);
+                    }
+                });
+
+                s.firstPlaceHistory.push(p.name === sorted[0].name);
+                s.lastPlaceHistory.push(p.name === loserName);
+            });
+
+            localStorage.setItem(stats, JSON.stringify(tStats));
+        } catch (err) {
+        console.error("Save Error:", err);
+        window.isSaving = false; 
+        alert("Error saving stats.");
+        }
+    }
+
+    function getStreak(arr, target) { 
+        let max = 0, cur = 0; 
+        arr.forEach(v => { if(v === target) { cur++; max = Math.max(max, cur); } else { cur = 0; } }); 
+        return max; 
+    }
+
+    function getStatColor(val, allVals, isLowerBetter) {
+        if (allVals.length < 2) return "";
+        const numericVals = allVals.map(v => typeof v === 'string' ? parseFloat(v.replace(/[^0-9.-]/g, '')) : v);
+        const currentNum = typeof val === 'string' ? parseFloat(val.replace(/[^0-9.-]/g, '')) : val;
+        const min = Math.min(...numericVals);
+        const max = Math.max(...numericVals);
+        if (min === max) return ""; 
+        if (isLowerBetter) {
+            if (currentNum === min) return "color: #27ae60; font-weight: bold;";
+            if (currentNum === max) return "color: #e74c3c; font-weight: bold;";
+        } else {
+            if (currentNum === max) return "color: #27ae60; font-weight: bold;";
+            if (currentNum === min) return "color: #e74c3c; font-weight: bold;";
+        }
+        return "";
+    }
+
+    function loadStats(dataToRender = null, targetIdBody, targetIdHead) {
+        // Use the passed data (allTime) OR fall back to current session players
+        //const sourceData = dataToRender || players;
+
+        //const sorted = Object.entries(sourceData).sort((a, b) => b[1].tPoints - a[1].tPoints);
+
+        // Check if we are rendering "All-Time" to adjust the header
+        const isAllTime = (dataToRender === allTime);        
+
+        const tStats = JSON.parse(localStorage.getItem(dataToRender) || "{}");
+        const playerNames = Object.keys(tStats).sort((a,b) => tStats[b].tPoints - tStats[a].tPoints);
+        if (playerNames.length === 0) {
+            document.getElementById(targetIdBody).innerHTML = "<tr><td colspan='2' style='text-align:center; padding:20px;'>No game history found. Start a game to see stats!</td></tr>";
+            return;
+        }
+
+        // const head = document.getElementById('tStats-head');
+        // const body = UI.tStatsBody;
+        const head = document.getElementById(targetIdHead);
+        const body = document.getElementById(targetIdBody);
+        head.innerHTML = `<tr><th>STATISTICS</th>${playerNames.map(n => `<th>${n}</th>`).join('')}</tr>`;
+        // head.innerHTML = `<tr><th style-"width: 50px;">STATISTICS</th>${playerNames.map(n => `<th>${n}</th>`).join('')}</tr>`;
+
+        const pointValuesFound = new Set();
+        playerNames.forEach(n => {
+            if (tStats[n].tPointsDist) {
+                Object.keys(tStats[n].tPointsDist).forEach(v => pointValuesFound.add(Number(v)));
+            }
+        });
+
+        const pointDistRows = Array.from(pointValuesFound).sort((a,b) => b-a).map(val => ({
+            l: `GAMES EARNING ${val} T-POINTS`, 
+            fn: p => (p.tPointsDist && p.tPointsDist[val]) ? p.tPointsDist[val] : 0, 
+            lowerBetter: false
+        }));
+
+        const groups = [
+            { label: "Points Distribution", stats: [
+                { l: "TOTAL TOURNAMENT POINTS", fn: p => p.tPoints, lowerBetter: false },
+                ...pointDistRows 
+            ]},
+            { label: "Financials", stats: [
+                { l: "MONEY FROM LOSSES", fn: p => `$${p.lossesMoney}`, lowerBetter: true },
+                { l: "MONEY FROM PENALTIES", fn: p => `$${p.penaltyMoney}`, lowerBetter: true },
+                { l: "TOTAL MONEY IN POT", fn: p => `$${p.lossesMoney + p.penaltyMoney}`, lowerBetter: true },
+                { l: "MOST MONEY PAID IN ONE GAME", fn: p => `$${p.maxMoneyGame}`, lowerBetter: true }
+            ]},
+            { label: "General Scoring", stats: [
+                { l: "AVERAGE GAME POINTS", fn: p => Math.round(p.gamePoints / (p.gamesPlayed || 0)), lowerBetter: false },
+                { l: "TOTAL GAME POINTS", fn: p => p.gamePoints, lowerBetter: false },
+                { l: "TOTAL NUMBER OF SETS", fn: p => p.totalSets, lowerBetter: true },
+                { l: "TOTAL NUMBER OF TRICKS", fn: p => p.totalTricks, lowerBetter: false }
+            ]},
+            { label: "Game Records", stats: [
+                { l: "MOST SETS IN ONE GAME", fn: p => p.maxSetsGame, lowerBetter: true },
+                { l: "LEAST SETS IN ONE GAME", fn: p => p.minSetsGame, lowerBetter: true },
+                { l: "MOST TRICKS IN ONE GAME", fn: p => p.maxTricksGame, lowerBetter: false },
+                { l: "LEAST TRICKS IN ONE GAME", fn: p => p.minTricksGame, lowerBetter: false },
+                { l: "LOWEST SCORE EVER", fn: p => p.worstScore, lowerBetter: false },
+                { l: "HIGHEST SCORE EVER", fn: p => p.bestScore, lowerBetter: false }
+            ]},
+            { label: "Streaks", stats: [
+                { l: "LONGEST WINNING STREAK (GAMES)", fn: p => getStreak(p.firstPlaceHistory, true), lowerBetter: false },
+                { l: "LONGEST LOSING STREAK (GAMES)", fn: p => getStreak(p.lastPlaceHistory, true), lowerBetter: true },
+                { l: "LONGEST WINNING STREAK (HANDS)", fn: p => p.maxWinHandStreak, lowerBetter: false },
+                { l: "LONGEST LOSING STREAK (HANDS)", fn: p => p.maxLossHandStreak, lowerBetter: true },
+                { l: "LONGEST WINNING STREAK (ACROSS GAMES)", fn: p => getStreak(p.handHistory, true), lowerBetter: false },
+                { l: "LONGEST LOSING STREAK (ACROSS GAMES)", fn: p => getStreak(p.handHistory, false), lowerBetter: true },
+                { l: "LONGEST STREAK WITHOUT PAYING", fn: p => getStreak(p.payHistory, false), lowerBetter: false },
+                { l: "LONGEST STREAK WITH PAYING", fn: p => getStreak(p.payHistory, true), lowerBetter: true }
+            ]}
+        ];
+
+        let rowsHtml = "";
+        groups.forEach(g => {
+            rowsHtml += `<tr><td colspan="${playerNames.length + 1}" class="group-header">${g.label}</td></tr>`;
+            g.stats.forEach(s => {
+                const rowVals = playerNames.map(n => s.fn(tStats[n]));
+                rowsHtml += `<tr><td class="row-label">${s.l}</td>` + playerNames.map(n => {
+                    const val = s.fn(tStats[n]);
+                    const style = getStatColor(val, rowVals, s.lowerBetter);
+                    return `<td class="stat-val" style="${style}">${val}</td>`;
+                }).join('') + `</tr>`;
+            });
+        });
+
+        body.innerHTML = rowsHtml;
+    }
+
+    async function clearStats() {        
+        if (!confirm("Are you sure? This will wipe records.")) return;
+        
+        localStorage.removeItem(tournamentStats);
+        localStorage.setItem('skip_next_fetch', 'true');
+        
+        // If Admin, tell the Google Sheet to wipe itself too
+        if (IS_ADMIN && CURRENT_CONFIG.url) {
+            await fetch(CURRENT_CONFIG.url, {
+                method: 'POST',                    
+                body: JSON.stringify({
+                    key: CURRENT_CONFIG.key,
+                    type: "CLEAR_STATS" 
+                })
+            });
+        }
+        
+        location.reload();
+    }
+
+    function showLeaderboard() {
+        document.getElementById('setup-view').style.display = 'none';
+        document.getElementById('leaderboard-view').style.display = 'block';
+        
+        // Load from local storage for ScoreKeepers
+        loadStats(allTime, 'leaderboard-body', 'leaderboard-head');        
+    }
+
+    function hideLeaderboard() {
+        document.getElementById('leaderboard-view').style.display = 'none';
+        document.getElementById('setup-view').style.display = 'block';
+    }
+
+    async function finalizeTournament() {
+        if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
+
+        try {
+            // Retrieve current players/stats
+            const stats = JSON.parse(localStorage.getItem('tournamentStats') || "[]");
+            if (stats.length === 0) {
+                alert("No stats to save.");
+                return;
+            }
+
+            // 1. Prepare Archive Payload with the Tournament ID
+            const archiveData = stats.map(player => ({
+                name: player.name,
+                tPoints: player.tPoints,
+                wins: player.wins,
+                totalScore: player.totalScore,
+                tournamentID: currentTournamentID,
+                date: new Date().toLocaleDateString()
+            }));
+
+            // 2. Push to Cloud Archive
+            const response = await fetch(CONFIG.url, {
+                method: 'POST',
+                mode: 'no-cors', // Use based on your existing CONFIG setup
+                body: JSON.stringify({ 
+                    action: 'archiveTournament', 
+                    key: CONFIG.key, 
+                    data: archiveData 
+                })
+            });
+
+            // 3. Increment Tournament ID and save locally
+            currentTournamentID++;
+            localStorage.setItem('lastTournamentID', currentTournamentID);
+
+            // 4. Clear current session data locally
+            localStorage.removeItem('tournamentStats');
+            localStorage.removeItem('gameState'); 
+            
+            // 5. Send command to clear the 'Current' sheet on Google Drive
+            await fetch(CONFIG.url, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({ action: 'CLEAR_STATS', key: CONFIG.key })
+            });
+
+            alert("Tournament Finalized! ID #" + (currentTournamentID - 1) + " archived.");
+            location.reload(); // Refresh UI to a clean state
+            
+        } catch (e) {
+            console.error(e);
+            alert("Error saving stats: " + e.message);
+        }
+    }      
+       
+    function clearAllTimeHistory() {
+        if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?") && 
+            confirm("Are you absolutely sure? This cannot be undone.")) {
+            localStorage.removeItem(allTime);            
+            loadStats(allTime, 'leaderboard-body', 'leaderboard-head');
+        }
+    }
+</script>
+</body>
+</html>
