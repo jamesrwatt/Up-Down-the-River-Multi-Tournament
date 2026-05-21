@@ -595,8 +595,12 @@
     function refreshTable() {
         const body = document.getElementById('matrix-body'); 
         body.innerHTML = "";
-        
-        players[0].history.forEach((_, r) => {
+
+        // Get the length of history
+        const totalRounds = players[0].history.length;
+
+        // Loop backwards: start from the last index and go down to 0
+        for (let r = totalRounds - 1; r >= 0; r--) {
             // Use currentRounds[r] to display the correct card count in the "Rd" column
             let row = `<tr class="${(isEditing && r===editRoundIdx)?'editing-row':''}">
                 <td><button onclick="editRound(${r})">✏️</button></td>
@@ -609,7 +613,7 @@
                         <td style="font-weight:bold">${p.history[r].totalAtRound}</td>`;
             });
             body.innerHTML += row + "</tr>";
-        });
+        }
     }
 
     function editRound(r) { isEditing = true; editRoundIdx = r; phase = 'BIDDING'; refreshTable(); renderRound(); }
