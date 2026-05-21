@@ -903,6 +903,11 @@
         if (!confirm("Are you sure? This will wipe records.")) return;
         
         localStorage.removeItem(tournamentStats);
+        // 2. IMPORTANT FIX: Increment the local tournament ID so next games don't append to this old tournament's group!
+        currentTournamentID++;
+        localStorage.setItem('lastTournamentID', currentTournamentID);
+        
+        // Set skip fetch flag to allow local resets to display clean empty tables immediately
         localStorage.setItem('skip_next_fetch', 'true');
         
         if (IS_ADMIN && CURRENT_CONFIG.url) {
