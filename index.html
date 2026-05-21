@@ -662,11 +662,19 @@
             // TIE LOGIC: Find the first player with this score for T-Pts
             const firstIdxWithScore = sorted.findIndex(x => x.total === p.total);
             const tPts = players.length - firstIdxWithScore; 
-            
+
             // 2. Determine penalties:
-            // - Penalty for not meeting threshold
-            // - Penalty for being tied for last place (total === minScore)
-            const thresholdPenalty = (p.total < threshold ? 1 : 0);
+            let thresholdPenalty = 0;
+            
+            if (p.total < threshold) {                
+                thresholdPenalty = 1;                
+                // Calculate how many *full* 10-point increments below the threshold they are
+                const pointsBelow = threshold - p.total;        
+                const additionalPenalty = Math.floor(pointsBelow / 10);
+                
+                thresholdPenalty += additionalPenalty;
+            }
+
             const lastPlacePenalty = (p.total === minScore ? 1 : 0);
             const penalty = thresholdPenalty + lastPlacePenalty;
             
@@ -739,8 +747,17 @@
                 let currentWinStreak = 0;
                 let currentLossStreak = 0;
                 let s = tStats[p.name];                
-                const tPts = players.length - sorted.findIndex(x => x.total === p.total);
-                const penalty = p.total < threshold ? 1 : 0;
+                const tPts = players.length - sorted.findIndex(x => x.total === p.total);                
+
+                let penalty = 0;
+                if (p.total < threshold) {                
+                    penalty = 1;                
+                    // Calculate how many *full* 10-point increments below the threshold they are
+                    const pointsBelow = threshold - p.total;        
+                    const additionalPenalty = Math.floor(pointsBelow / 10);
+                    
+                    penalty += additionalPenalty;
+                }
                 
                 // 3. Check if the current player is in the "losers" lists
                 const loss = losers.includes(p.name) ? 1 : 0;                
