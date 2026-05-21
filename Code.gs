@@ -38,22 +38,18 @@ function doPost(e) {
       payload = e.parameter; 
     }
 
-    // --- HANDLE RESET COMMAND ---
+    // --- HANDLE RESET COMMAND (Current Tournament Only) ---
     if (payload.type === "CLEAR_STATS") {
       if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized Reset Attempt");
       
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       
-      // 1. Clear the Game Archive
-      const archiveSheet = ss.getSheetByName("Game Archive");
-      if (archiveSheet) {
-        archiveSheet.clear(); 
-      }
+      // 1. DO NOT CLEAR the Game Archive anymore (retained as an all-time cumulative history)
       
-      // 2. Reset the internal game counter to zero
+      // 2. Reset the internal game counter to zero (or keep it if you want it to increment continuously)
       PropertiesService.getScriptProperties().setProperty('game_counter', "0");
       
-      // 3. Clear the Tournament Stats visual sheet
+      // 3. Clear the Tournament Stats visual sheet (Current Standings only)
       const statsSheet = ss.getSheetByName("Tournament Stats");
       if (statsSheet) {
         statsSheet.clear();
@@ -62,7 +58,7 @@ function doPost(e) {
       // 4. Wipe the Turbo Cache so the next 'GET' calculates from scratch
       PropertiesService.getScriptProperties().deleteProperty('STATS_SNAPSHOT');
       
-      return ContentService.createTextOutput("Cloud Wiped Successfully").setMimeType(ContentService.MimeType.TEXT);
+      return ContentService.createTextOutput("Current Tournament Standings Reset Successfully").setMimeType(ContentService.MimeType.TEXT);
     }
 
     // --- HANDLE GAME ARCHIVE ---
@@ -79,27 +75,22 @@ function doPost(e) {
       // 3. Update the Visual "Leaderboard" tab (Full History)
       updateStatsSheet(allTimeStats, "Leaderboard");
 
-      // 4. Update the Visual "Tournament Stats" (only games since last reset)[cite: 5]
-      // Note: For this to work as 'Tournament Only', we filter the archive 
-      // by game numbers higher than the last reset point.
-      //const currentStats = getRecomputedStats(getLastResetGameNum());
+      // 4. Update the Visual "Tournament Stats" (only games since last reset)
       const currentStats = getRecomputedStats();
       updateStatsSheet(currentStats, "Tournament Stats");
 
-      // 5. Update Cache for Mobile Apps[cite: 5]
+      // 5. Update Cache for Mobile Apps
       PropertiesService.getScriptProperties().setProperty('STATS_SNAPSHOT', allTimeString);
 
       return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
     }
 
-    // Inside doPost(e)
     if (payload.type === "FINALIZE_TOURNAMENT") {
         if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized");
         
         const ss = SpreadsheetApp.getActiveSpreadsheet();
         let lbSheet = ss.getSheetByName("Leaderboard") || ss.insertSheet("Leaderboard");
         
-        // Log the current standings as a new entry with a timestamp
         const timestamp = new Date();
         const statsData = payload.data;
         
@@ -113,27 +104,26 @@ function doPost(e) {
             ]);
         });
 
-        // Re-trigger the snapshot cache for all-time stats
-        const allTimeData = getRecomputedStats(); // This already looks at Game Archive
+        const allTimeData = getRecomputedStats(); 
         PropertiesService.getScriptProperties().setProperty('STATS_SNAPSHOT', JSON.stringify(allTimeData));
         
         return ContentService.createTextOutput("Tournament Archived").setMimeType(ContentService.MimeType.TEXT);
     }
 
     if (payload.action === 'archiveTournament') {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tournament_History');
-    payload.data.forEach(function(row) {
-      sheet.appendRow([
-        row.tournamentID, 
-        row.date, 
-        row.name, 
-        row.tPoints, 
-        row.wins, 
-        row.totalScore 
-      ]);
-    });
-    return ContentService.createTextOutput(JSON.stringify({success: true}));
-  }
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tournament_History');
+      payload.data.forEach(function(row) {
+        sheet.appendRow([
+          row.tournamentID, 
+          row.date, 
+          row.name, 
+          row.tPoints, 
+          row.wins, 
+          row.totalScore 
+        ]);
+      });
+      return ContentService.createTextOutput(JSON.stringify({success: true}));
+    }
 
   } catch (f) {
     return ContentService.createTextOutput("Error: " + f.toString()).setMimeType(ContentService.MimeType.TEXT);
@@ -150,37 +140,30 @@ function archiveGameToTab(gameData, tournamentID) {
   let sheet = ss.getSheetByName("Game Archive");
   if (!sheet) sheet = ss.insertSheet("Game Archive");
 
-  const players = gameData.players; // Current game's players in their current order
+  const players = gameData.players; 
   const gameDate = new Date().toLocaleDateString();
   const scriptProp = PropertiesService.getScriptProperties();
   let gameNum = parseInt(scriptProp.getProperty('game_counter') || "0") + 1;
   scriptProp.setProperty('game_counter', gameNum.toString());
 
-  // 1. Ensure all current players have a designated column in the header
   let headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0];
   if (headers.length < 5) headers = ["Tournament ID", "Game #", "Date", "Cards", "Trump"];
 
   players.forEach(player => {
-    // Check if player already exists in headers
     let playerIdx = headers.indexOf(`${player.name} (Σ)`);
     if (playerIdx === -1) {
-      // New player! Add their 3 columns to the end of the header array
       headers.push(`${player.name} (B)`, `${player.name} (T)`, `${player.name} (Σ)`);
     }
   });
 
-  // 2. Update the header row on the sheet
   sheet.getRange(1, 1, 1, headers.length).setValues([headers])
        .setFontWeight("bold").setBackground("#d9ead3");
 
-  // 3. Create a Map of where each player's data belongs
-  // Key: Player Name -> Value: Starting Column Index for that player
   let colMap = {};
   players.forEach(p => {
-    colMap[p.name] = headers.indexOf(`${p.name} (B)`) + 1; // +1 for 1-based indexing
+    colMap[p.name] = headers.indexOf(`${p.name} (B)`) + 1; 
   });
 
-  // 4. Prepare the rows
   const maxCards = Math.min(10, Math.floor(52 / players.length));
   const up = Array.from({length: maxCards}, (_, i) => i + 1);
   const down = [...up].reverse().slice(1);
@@ -188,68 +171,23 @@ function archiveGameToTab(gameData, tournamentID) {
 
   let allRows = [];
   for (let r = 0; r < rounds.length; r++) {
-    // Initialize a row full of empty values or zeros based on header length
-    // let row = new Array(headers.length).fill(""); 
-    
-    // Set base info
-    // row[0] = tournamentID;
-    // row[1] = gameNum;
-    // row[2] = gameDate;
-    // row[3] = rounds[r];
-    // row[4] = getTrumpLabel(r, players.length);
-
     const rowData = new Array(headers.length).fill("");
-    const rowMap = {
-      "Tournament ID": payload.tournamentID || payload.tID,
-      "Game #": payload.gameNumber || payload.gameNum,      
-      "Date": new Date(),
-      "Round": payload.roundName || "",
-      "Trump": payload.trumpSuit || ""
-    };
+    rowData[0] = tournamentID;
+    rowData[1] = gameNum;
+    rowData[2] = gameDate;
+    rowData[3] = rounds[r];
+    rowData[4] = getTrumpLabel(r, players.length);
 
-    // 2. Map Player Data using shorthand suffixes (B), (T), (Σ)
-    if (payload.players) {
-      payload.players.forEach(p => {
-        rowMap[`${p.name} (B)`] = p.bid;
-        rowMap[`${p.name} (T)`] = p.tricks;
-        rowMap[`${p.name} (Σ)`] = p.score;
-      });
-    }
-
-    // 3. Fill the row array based on header positions
-    headers.forEach((header, index) => {
-      if (rowMap[header] !== undefined) {
-        rowData[index] = rowMap[header];
-      }
+    players.forEach(p => {
+      let h = p.history[r] || {bid: 0, tricks: 0, totalAtRound: 0};
+      let startCol = colMap[p.name] - 1; 
+      rowData[startCol] = h.bid;
+      rowData[startCol + 1] = h.tricks;
+      rowData[startCol + 2] = h.totalAtRound;
     });
-
-    // // Place player data in their SPECIFIC assigned columns
-    // players.forEach(p => {
-    //   let h = p.history[r] || {bid: 0, tricks: 0, totalAtRound: 0};
-    //   let startCol = colMap[p.name] - 1; // 0-based index for the array
-    //   row[startCol] = h.bid;
-    //   row[startCol + 1] = h.tricks;
-    //   row[startCol + 2] = h.totalAtRound;
-    // });
-    // allRows.push(row);
-
-    // Map player data using a rowMap to match headers like "PlayerName (Σ)"
-    // gameData.players.forEach(player => {
-    //   headers.forEach((header, index) => {
-    //     const cleanHeader = header.toString();
-    //     if (cleanHeader === `${player.name} (B)`) row[index] = player.bid;
-    //     if (cleanHeader === `${player.name} (T)`) row[index] = player.tricks;
-    //     if (cleanHeader === `${player.name} (Σ)`) row[index] = player.score;
-    //   });
-    // });
-    
-    // sheet.appendRow(row);
-
-    sheet.appendRow(rowData);
-    return "Success: Game Archived";
+    allRows.push(rowData);
   }
 
-  // 5. Append the data
   sheet.getRange(sheet.getLastRow() + 1, 1, allRows.length, headers.length).setValues(allRows);
 }
 
@@ -257,17 +195,19 @@ function getTrumpLabel(idx, numPlayers) {
   const maxCards = Math.min(10, Math.floor(52 / numPlayers));
   const peakIdx = maxCards - 1;
 
-  // No Trump (NT) occurs at the peak round and the rounds immediately flanking it
-  if (idx === peakIdx - 1 || idx === peakIdx || idx === peakIdx + 1) {
+  if (idx === peakIdx - 2 || idx === peakIdx || idx === peakIdx + 2) {
     return "NT";
   }
 
-  const suits = ["H", "S", "D", "C"];
+  const suits = ["H", "C", "D", "S"];
   let suitIdx;
-  if (idx < peakIdx - 1) {
+  if (idx < peakIdx - 2) {
     suitIdx = idx;
+  } else if (idx === peakIdx - 1) {
+    suitIdx = idx - 1;
+  } else if (idx === peakIdx + 1) {
+    suitIdx = idx + 2;
   } else {
-    // Adjust rotation to skip the 3 NT rounds
     suitIdx = idx - 3;
   }
   
@@ -283,7 +223,6 @@ function getRecomputedStats() {
   if (data.length < 2) return {};
 
   const rawHeaders = data[0];
-  // Cleans suffixes like (B), (T), (Σ) to get raw player names
   const headers = rawHeaders.map(h => h.toString().replace(/ \([B|T|Σ]\)/gi, "").trim());
   const rows = data.slice(1);
 
@@ -343,9 +282,6 @@ function getRecomputedStats() {
       }
       const pData = g.players[pName];
       const s = stats[pName];
-      const rankIdx = sorted.findIndex(x => x.name === pName);
-      // FIXED TIE LOGIC: 
-      // Instead of rankIdx, find the index of the FIRST person with this score
       const firstIdxWithScore = sorted.findIndex(x => x.total === pData.total);
       const tPts = pNames.length - firstIdxWithScore;
       
@@ -396,10 +332,10 @@ function updateStatsSheet(statsData, sheetName) {
   const sortedPointValues = Array.from(pointValuesFound).sort((a,b) => b-a);
 
   const rows = [["STATISTICS", ...playerNames]];
-  const headerRows = []; // Track which rows are section headers
+  const headerRows = []; 
 
   const addSection = (label, stats) => {
-    headerRows.push(rows.length); // Mark this row index as a header
+    headerRows.push(rows.length); 
     rows.push([label.toUpperCase(), ...playerNames.map(() => "")]);
     stats.forEach(stat => {
       let row = [stat.l];
@@ -448,15 +384,13 @@ function updateStatsSheet(statsData, sheetName) {
     { l: "LONGEST STREAK WITH PAYING", fn: p => getStreakFromScript(p.payHistory, true) }
   ]);
 
-  // 1. Write ALL data in one go
   const range = sheet.getRange(1, 1, rows.length, playerNames.length + 1);
   range.setValues(rows);
 
-  // 2. Batch Format Backgrounds
   const backgrounds = rows.map((row, idx) => {
-    if (idx === 0) return new Array(row.length).fill("#2c3e50"); // Main Header
-    if (headerRows.includes(idx)) return new Array(row.length).fill("#dfe6e9"); // Section Headers
-    return new Array(row.length).fill(null); // Default
+    if (idx === 0) return new Array(row.length).fill("#2c3e50"); 
+    if (headerRows.includes(idx)) return new Array(row.length).fill("#dfe6e9"); 
+    return new Array(row.length).fill(null); 
   });
   
   const fontColors = rows.map((row, idx) => {
@@ -469,7 +403,6 @@ function updateStatsSheet(statsData, sheetName) {
     return new Array(row.length).fill("normal");
   });
 
-  // Apply all formatting in 3 single API calls instead of 50+
   range.setBackgrounds(backgrounds);
   range.setFontColors(fontColors);
   range.setFontWeights(fontWeights);
@@ -478,7 +411,6 @@ function updateStatsSheet(statsData, sheetName) {
   sheet.setFrozenRows(1);
   sheet.autoResizeColumns(1, playerNames.length + 1);
 }
-
 
 function getStreakFromScript(arr, target) {
   let max = 0, cur = 0;
@@ -490,14 +422,12 @@ function getStreakFromScript(arr, target) {
  * UPDATED MANUAL REFRESH: Ensures the Turbo cache is updated if you manually edit the sheet.
  */
 function manualStatsRefresh() {
-  const dataTournament = getRecomputedStats(); // Update with Tournament variable
-  const dataAllTime = getRecomputedStats(); // Update with allTime variable
-  const dataString = JSON.stringify(data);
+  const dataTournament = getRecomputedStats(); 
+  const dataAllTime = getRecomputedStats(); 
+  const dataString = JSON.stringify(dataTournament);
   
-  // 1. Update the Cache for the App
   PropertiesService.getScriptProperties().setProperty('STATS_SNAPSHOT', dataString);
   
-  // 2. Update the Visual Sheets (Check names carefully!)
   updateStatsSheet(dataTournament, "Tournament Stats"); 
   updateStatsSheet(dataAllTime, "Leaderboard");
   
@@ -516,7 +446,6 @@ function syncGameCounter() {
     return;
   }
 
-  // Get the very last value in Column A (Game #)
   const lastRow = sheet.getLastRow();
   const lastGameNum = sheet.getRange(lastRow, 2).getValue();
 
@@ -530,25 +459,18 @@ function syncGameCounter() {
 
 /**
  * Manual function to clear the Leaderboard tab and its associated cache.
- * Can be run manually from the Apps Script editor.
  */
 function clearLeaderboard() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const lbSheet = ss.getSheetByName("Leaderboard");
   
   if (lbSheet) {
-    // Clear all content and formatting from the Leaderboard sheet
     lbSheet.clear();
     Logger.log("Leaderboard sheet cleared.");
   } else {
     Logger.log("Leaderboard sheet not found, nothing to clear.");
   }
 
-  // Optional: If you use a separate property for All-Time cache, clear it here.
-  // PropertiesService.getScriptProperties().deleteProperty('allTimeStats_SNAPSHOT');
-  
-  // Update the Turbo Cache so the app reflects the empty state immediately
-  PropertiesService.getScriptProperties().deleteProperty('_SNAPSHOT');
-  
-  Logger.log("Leaderboard cache wiped. Next load will recompute from scratch.");
+  PropertiesService.getScriptProperties().deleteProperty('STATS_SNAPSHOT');
+  Logger.log("Leaderboard cache wiped.");
 }
