@@ -336,6 +336,11 @@
     };
 
     async function fetchCloudData() {
+        if (!CURRENT_CONFIG.url || CURRENT_CONFIG.url.trim() === "" || CURRENT_CONFIG.url === DEFAULT_URL) {
+            UI.status.innerText = "👁️ Viewer (No Sync URL Set)";
+            return;
+        }
+
         UI.tStatsBody.innerHTML = `
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
@@ -373,6 +378,9 @@
 
     async function pushCloudData(data) {
         if (!IS_ADMIN) return;
+        if (!CURRENT_CONFIG.url || CURRENT_CONFIG.url.trim() === "" || CURRENT_CONFIG.url === DEFAULT_URL) {
+            return;
+        }
         UI.status.innerText = "Pushing to Cloud...";
         try {
             const res = await fetch(CURRENT_CONFIG.url, {
@@ -495,6 +503,11 @@
         
         initUI(); 
         refreshTable();
+    }
+
+    // Explicitly calculate and return the correct Tournament ID from memory or local cache
+    function getActiveTournamentID() {
+        return parseInt(localStorage.getItem('lastTournamentID')) || 1;
     }
 
     function initUI() {
@@ -692,7 +705,9 @@
         localStorage.removeItem('river_v3_currentGame');
         localStorage.setItem('skip_next_fetch', 'true');
 
-        if (IS_ADMIN && CURRENT_CONFIG.url) {
+        const activeTID = getActiveTournamentID();
+
+        if (IS_ADMIN && CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
             try {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
@@ -700,7 +715,7 @@
                         key: CURRENT_CONFIG.key,
                         type: "ARCHIVE_GAME",
                         gameData: { players: players },
-                        tournamentID: currentTournamentID
+                        tournamentID: activeTID
                     })
                 });
             } catch (cloudErr) {
@@ -900,12 +915,19 @@
     }
 
     async function clearStats() {        
-        if (!confirm("Are you sure? This will wipe records.")) return;
+        if (!confirm("Are you sure? This will wipe active tournament standings and increment the Tournament ID for subsequent games.")) return;
         
+        // 1. Wipe local active standings
         localStorage.removeItem(tournamentStats);
+
+        // 2. IMPORTANT FIX: Increment the local tournament ID so next games don't append to this old tournament's group!
+        currentTournamentID++;
+        localStorage.setItem('lastTournamentID', currentTournamentID);
+        
+        // Set skip fetch flag to allow local resets to display clean empty tables immediately
         localStorage.setItem('skip_next_fetch', 'true');
         
-        if (IS_ADMIN && CURRENT_CONFIG.url) {
+        if (IS_ADMIN && CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
             await fetch(CURRENT_CONFIG.url, {
                 method: 'POST',                    
                 body: JSON.stringify({
@@ -933,7 +955,6 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
-            // Retrieve current tournament stats from 'river_v3_tStats' (and not the mismatched 'tournamentStats')
             const statsObj = JSON.parse(localStorage.getItem(tournamentStats) || "{}");
             const playerKeys = Object.keys(statsObj);
 
@@ -942,7 +963,8 @@
                 return;
             }
 
-            // Convert the local stats Object into the expected flat Array format for 'archiveTournament'
+            const activeTID = getActiveTournamentID();
+
             const archiveData = playerKeys.map(name => {
                 const p = statsObj[name];
                 return {
@@ -950,14 +972,14 @@
                     tPoints: p.tPoints || 0,
                     wins: getStreak(p.firstPlaceHistory || [], true),
                     totalScore: p.gamePoints || 0,
-                    tournamentID: currentTournamentID,
+                    tournamentID: activeTID,
                     date: new Date().toLocaleDateString()
                 };
             });
 
             // Push to Cloud Archive (execute post request securely using CURRENT_CONFIG)
-            if (CURRENT_CONFIG.url) {
-                const response = await fetch(CURRENT_CONFIG.url, {
+            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
+                await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
                     body: JSON.stringify({ 
                         action: 'archiveTournament', 
@@ -976,7 +998,7 @@
             localStorage.removeItem('river_v3_currentGame'); 
             
             // Clean 'Current' sheet on Google Drive via CLEAR_STATS payload
-            if (CURRENT_CONFIG.url) {
+            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'CLEAR_STATS', key: CURRENT_CONFIG.key })
