@@ -933,45 +933,58 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
-            const stats = JSON.parse(localStorage.getItem('tournamentStats') || "[]");
-            if (stats.length === 0) {
+            // Retrieve current tournament stats from 'river_v3_tStats' (and not the mismatched 'tournamentStats')
+            const statsObj = JSON.parse(localStorage.getItem(tournamentStats) || "{}");
+            const playerKeys = Object.keys(statsObj);
+
+            if (playerKeys.length === 0) {
                 alert("No stats to save.");
                 return;
             }
 
-            const archiveData = stats.map(player => ({
-                name: player.name,
-                tPoints: player.tPoints,
-                wins: player.wins,
-                totalScore: player.totalScore,
-                tournamentID: currentTournamentID,
-                date: new Date().toLocaleDateString()
-            }));
-
-            const response = await fetch(CONFIG.url, {
-                method: 'POST',
-                mode: 'no-cors',
-                body: JSON.stringify({ 
-                    action: 'archiveTournament', 
-                    key: CONFIG.key, 
-                    data: archiveData 
-                })
+            // Convert the local stats Object into the expected flat Array format for 'archiveTournament'
+            const archiveData = playerKeys.map(name => {
+                const p = statsObj[name];
+                return {
+                    name: name,
+                    tPoints: p.tPoints || 0,
+                    wins: getStreak(p.firstPlaceHistory || [], true),
+                    totalScore: p.gamePoints || 0,
+                    tournamentID: currentTournamentID,
+                    date: new Date().toLocaleDateString()
+                };
             });
 
+            // Push to Cloud Archive (execute post request securely using CURRENT_CONFIG)
+            if (CURRENT_CONFIG.url) {
+                const response = await fetch(CURRENT_CONFIG.url, {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        action: 'archiveTournament', 
+                        key: CURRENT_CONFIG.key, 
+                        data: archiveData 
+                    })
+                });
+            }
+
+            // Increment Tournament ID and save locally
             currentTournamentID++;
             localStorage.setItem('lastTournamentID', currentTournamentID);
 
-            localStorage.removeItem('tournamentStats');
-            localStorage.removeItem('gameState'); 
+            // Clear current session data locally
+            localStorage.removeItem(tournamentStats);
+            localStorage.removeItem('river_v3_currentGame'); 
             
-            await fetch(CONFIG.url, {
-                method: 'POST',
-                mode: 'no-cors',
-                body: JSON.stringify({ action: 'CLEAR_STATS', key: CONFIG.key })
-            });
+            // Clean 'Current' sheet on Google Drive via CLEAR_STATS payload
+            if (CURRENT_CONFIG.url) {
+                await fetch(CURRENT_CONFIG.url, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'CLEAR_STATS', key: CURRENT_CONFIG.key })
+                });
+            }
 
             alert("Tournament Finalized! ID #" + (currentTournamentID - 1) + " archived.");
-            location.reload();
+            location.reload(); // Refresh UI to clean slate
             
         } catch (e) {
             console.error(e);
