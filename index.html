@@ -710,8 +710,15 @@
     async function updateStats(stats) {
         try {
             let tStats = JSON.parse(localStorage.getItem(stats) || "{}");
-            const sorted = [...players].sort((a, b) => b.total - a.total);        
-            const loserName = sorted[sorted.length - 1].name;
+            const sorted = [...players].sort((a, b) => b.total - a.total);            
+
+            // 1. Identify the minimum/maximum score across all players
+            const minScore = Math.min(...players.map(p => p.total));
+            const maxScore = Math.max(...players.map(p => p.total));
+
+            // 2. Identify all players who share that minimum/maximum score
+            const losers = players.filter(p => p.total === minScore).map(p => p.name);
+            const winners = players.filter(p => p.total === maxScore).map(p => p.name);
 
             players.forEach(p => {
                 if (!tStats[p.name]) {
@@ -730,7 +737,10 @@
                 let s = tStats[p.name];                
                 const tPts = players.length - sorted.findIndex(x => x.total === p.total);
                 const penalty = p.total < threshold ? 1 : 0;
-                const loss = p.name === loserName ? 1 : 0;
+                
+                // 3. Check if the current player is in the "losers" lists
+                const loss = losers.includes(p.name) ? 1 : 0;                
+
                 const gTricks = p.history.reduce((a, b) => a + (Number(b.tricks) || 0), 0);
                 const gSets = p.history.reduce((a, b) => a + (b.set ? 1 : 0), 0);
 
@@ -766,8 +776,8 @@
                     }
                 });
 
-                s.firstPlaceHistory.push(p.name === sorted[0].name);
-                s.lastPlaceHistory.push(p.name === loserName);
+                s.firstPlaceHistory.push(winners.includes(p.name)); // Updated to include all tied winners
+                s.lastPlaceHistory.push(losers.includes(p.name)); // Updated to include all tied losers
             });
 
             localStorage.setItem(stats, JSON.stringify(tStats));
