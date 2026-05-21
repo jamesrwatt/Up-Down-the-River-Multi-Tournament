@@ -648,18 +648,27 @@
 
     function endGame() {
         const sorted = [...players].sort((a,b) => b.total - a.total);
+        
+        // 1. Identify the minimum score to determine who is "last place"
+        const minScore = Math.min(...players.map(p => p.total));
+        
         let html = `<table style="width:100%"><tr><th>Rank</th><th>Player</th><th>Score</th><th>T-Pts</th><th>Pen</th></tr>`;
         
         sorted.forEach((p, i) => {
-            // TIE LOGIC: Find the first player with this score to determine T-Pts
+            // TIE LOGIC: Find the first player with this score for T-Pts
             const firstIdxWithScore = sorted.findIndex(x => x.total === p.total);
             const tPts = players.length - firstIdxWithScore; 
             
-            const penalty = (p.total < threshold ? 1 : 0) + (p.name === sorted[sorted.length-1].name ? 1 : 0);
+            // 2. Determine penalties:
+            // - Penalty for not meeting threshold
+            // - Penalty for being tied for last place (total === minScore)
+            const thresholdPenalty = (p.total < threshold ? 1 : 0);
+            const lastPlacePenalty = (p.total === minScore ? 1 : 0);
+            const penalty = thresholdPenalty + lastPlacePenalty;
             
-            // Display rank normally (1, 2, 3...) but keep T-Pts tied
             html += `<tr><td>${i+1}</td><td>${p.name}</td><td>${p.total}</td><td>${tPts}</td><td>$${penalty}</td></tr>`;
         });
+        
         document.getElementById('modal-body').innerHTML = html;
         document.getElementById('modal').style.display = 'block';
     }
