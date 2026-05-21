@@ -211,30 +211,24 @@
     
             <!-- ONLY SCOREKEEPERS SEE THIS -->
             <button onclick="startGame()" class="scorekeeper-flex-item" 
-                    style="flex: 1; 
-                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
-                    ">
+                    style="flex: 1;">
                 Start New Game
             </button>
 
             <!-- EVERYONE SEES THIS -->
             <button onclick="showLeaderboard()" id="public-leaderboard-btn"
-                    style="flex: 1; 
-                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
-                    ">
+                    style="flex: 1;">
                 Leaderboard
             </button>
             
             <!-- ONLY SCOREKEEPERS SEE THIS -->
             <button onclick="finalizeTournament()" class="scorekeeper-flex-item" 
-                    style="flex: 1; 
-                    /* background-color: #2c3e50; color: white; border: none; border-radius: 8px; padding: 14px 5px; font-size: 0.9rem; cursor: pointer; font-weight: bold; */
-                    ">
+                    style="flex: 1;">
                 Finalize Tournament
             </button>
         </div>
 
-        <div class= "standard-container" border-top: 2px solid #eee; padding-top: 15px;>
+        <div class="standard-container" style="border-top: 2px solid #eee; padding-top: 15px;">
             <h3 style="text-align:center; margin-bottom: 15px;">🏆 Tournament Standings</h3>            
             <table class="standard-table">
                 <thead id="tStats-head"></thead>
@@ -268,9 +262,7 @@
                 <tbody id="leaderboard-body"></tbody>
             </table>
             
-            
             <button onclick="clearAllTimeHistory()" class="scorekeeper-only btn-danger" style="margin-top:20px; width:auto; padding:8px; font-size:0.7rem;">Clear All-Time History</button>
-            
         </div>
     </div>
 
@@ -286,9 +278,9 @@
     let IS_SCOREKEEPER = false;
     let threshold = 130; //INITIAL VALUE UPDATES LATER BASED ON PLAYER COUNT
     let CURRENT_CONFIG = { url: "", key: "" };
-    let allTime = 'river_v3_allTime' // to change this might need to change google sheet script
-    let tournamentStats = 'river_v3_tStats'
-    let skipFetch = false
+    let allTime = 'river_v3_allTime'; // to change this might need to change google sheet script
+    let tournamentStats = 'river_v3_tStats';
+    let skipFetch = false;
 
     // --- CONSTANTS ---    
     const SUITS = [
@@ -316,7 +308,6 @@
         role: document.getElementById('role-select'),
         tStatsBody: document.getElementById('tStats-body')
     };
-       
 
     window.onload = async () => {        
         checkPermissions();        
@@ -332,14 +323,19 @@
 
         document.getElementById('setup-view').style.display = 'block';
 
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js')
-            .then(() => console.log("Service Worker Registered"));
+        // Protected Service Worker registration logic to prevent unhandled rejection errors in sandboxed contexts
+        if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+            try {
+                navigator.serviceWorker.register('sw.js')
+                .then(() => console.log("Service Worker Registered"))
+                .catch(err => console.warn("Service Worker registration failed:", err));
+            } catch (e) {
+                console.warn("Service Worker registration bypassed due to sandboxed environment:", e);
+            }
         }
     };
 
     async function fetchCloudData() {
-
         UI.tStatsBody.innerHTML = `
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
@@ -354,6 +350,20 @@
             const data = await response.json();
             localStorage.setItem(tournamentStats, JSON.stringify(data));            
             localStorage.setItem(allTime, JSON.stringify(data));
+
+            // CRITICAL FIX: Instantly refresh the visual standings table with new cloud data!
+            loadStats(tournamentStats, 'tStats-body', 'tStats-head');
+
+            // Reset sync status indicator styling
+            if (IS_ADMIN) {
+                UI.status.style.background = "#e8f5e9";
+                UI.status.style.color = "#27ae60";
+                UI.status.innerText = "🛡️ Admin";            
+            } else {
+                UI.status.style.background = "#eee";
+                UI.status.style.color = "#777";
+                UI.status.innerText = "👁️ Viewer";            
+            }
 
         } catch (e) {
             console.error("Sync Error:", e);
@@ -377,9 +387,8 @@
     }
 
     function generateQRCode() {
-        const driveUrl = "https://jamesrwatt.github.io/Up-Down-the-River-Multi-Tournament/"
+        const driveUrl = "https://jamesrwatt.github.io/Up-Down-the-River-Multi-Tournament/";
         const qrImg = document.getElementById('qr-code-img');
-        // Switched to api.qrserver.com for reliable generation
         qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${driveUrl}`;
     }
 
@@ -408,7 +417,7 @@
         location.reload();
     }
 
-     function checkPermissions() {
+    function checkPermissions() {
         // 1. Pull the config once
         const savedConfig = JSON.parse(localStorage.getItem('river_config') || "{}");
         CURRENT_CONFIG = {
@@ -432,7 +441,7 @@
         document.getElementById('setup-controls').style.display = IS_SCOREKEEPER ? 'block' : 'none';
         document.getElementById('admin-key-container').style.display = (UI.role.value === 'ADMIN') ? 'block' : 'none';
 
-        //  Style the Status Indicator
+        // Style the Status Indicator
         UI.status.style.display = "inline-block";
         UI.status.style.float = "right"; 
         UI.status.style.padding = "4px 12px";
@@ -501,7 +510,6 @@
             players.map(p => `<th colspan="3">${p.name}</th>`).join('') + 
             `</tr><tr><th></th><th></th><th></th>` + 
             players.map(()=>`<td>B</td><td>T</td><td>Σ</td>`).join('') + `</tr>`;
-            // players.map(()=>`<td>Bid</td><td>Tricks</td><td>Score</td>`).join('') + `</tr>`;
         
         renderRound();
     }
@@ -537,7 +545,6 @@
         
         UI.actionBtn.innerText = phase === 'BIDDING' ? 'Lock Bids' : 'Submit Results';
         validate();
-
     }
 
     function validate() {
@@ -596,12 +603,10 @@
         const body = document.getElementById('matrix-body'); 
         body.innerHTML = "";
 
-        // Get the length of history
         const totalRounds = players[0].history.length;
 
         // Loop backwards: start from the last index and go down to 0
         for (let r = totalRounds - 1; r >= 0; r--) {
-            // Use currentRounds[r] to display the correct card count in the "Rd" column
             let row = `<tr class="${(isEditing && r===editRoundIdx)?'editing-row':''}">
                 <td><button onclick="editRound(${r})">✏️</button></td>
                 <td>${currentRounds[r]}</td> 
@@ -619,7 +624,7 @@
     function editRound(r) { isEditing = true; editRoundIdx = r; phase = 'BIDDING'; refreshTable(); renderRound(); }
     
     function getTrump(idx) {
-        const peakIdx = maxCards - 1
+        const peakIdx = maxCards - 1;
 
         // No Trump Logic (Middle Rounds)
         if (idx === peakIdx - 2 || idx === peakIdx || idx === peakIdx + 2) {
@@ -652,26 +657,18 @@
 
     function endGame() {
         const sorted = [...players].sort((a,b) => b.total - a.total);
-        
-        // 1. Identify the minimum score to determine who is "last place"
         const minScore = Math.min(...players.map(p => p.total));
-        
         let html = `<table style="width:100%"><tr><th>Rank</th><th>Player</th><th>Score</th><th>T-Pts</th><th>Pen</th></tr>`;
         
         sorted.forEach((p, i) => {
-            // TIE LOGIC: Find the first player with this score for T-Pts
             const firstIdxWithScore = sorted.findIndex(x => x.total === p.total);
             const tPts = players.length - firstIdxWithScore; 
 
-            // 2. Determine penalties:
             let thresholdPenalty = 0;
-            
             if (p.total < threshold) {                
                 thresholdPenalty = 1;                
-                // Calculate how many *full* 10-point increments below the threshold they are
                 const pointsBelow = threshold - p.total;        
                 const additionalPenalty = Math.floor(pointsBelow / 10);
-                
                 thresholdPenalty += additionalPenalty;
             }
 
@@ -693,30 +690,27 @@
         updateStats(allTime);
 
         localStorage.removeItem('river_v3_currentGame');
+        localStorage.setItem('skip_next_fetch', 'true');
 
-            // CRITICAL: Block cloud fetch on the next refresh so local stats show up
-            localStorage.setItem('skip_next_fetch', 'true');
-
-            if (IS_ADMIN && CURRENT_CONFIG.url) {
-                try {
-                    await fetch(CURRENT_CONFIG.url, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            key: CURRENT_CONFIG.key,
-                            type: "ARCHIVE_GAME",
-                            gameData: { players: players },
-                            tournamentID: currentTournamentID
-                        })
-                    });
-                } catch (cloudErr) {
-                    console.warn("Cloud push failed.");
-                }
-            } else {
-                // SCOREKEEPER: Protection for local stats display after save
-                localStorage.setItem('skip_next_fetch', 'true');
+        if (IS_ADMIN && CURRENT_CONFIG.url) {
+            try {
+                await fetch(CURRENT_CONFIG.url, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        key: CURRENT_CONFIG.key,
+                        type: "ARCHIVE_GAME",
+                        gameData: { players: players },
+                        tournamentID: currentTournamentID
+                    })
+                });
+            } catch (cloudErr) {
+                console.warn("Cloud push failed.");
             }
+        } else {
+            localStorage.setItem('skip_next_fetch', 'true');
+        }
 
-            location.reload(); 
+        location.reload(); 
     }
 
     async function updateStats(stats) {
@@ -724,11 +718,9 @@
             let tStats = JSON.parse(localStorage.getItem(stats) || "{}");
             const sorted = [...players].sort((a, b) => b.total - a.total);            
 
-            // 1. Identify the minimum/maximum score across all players
             const minScore = Math.min(...players.map(p => p.total));
             const maxScore = Math.max(...players.map(p => p.total));
 
-            // 2. Identify all players who share that minimum/maximum score
             const losers = players.filter(p => p.total === minScore).map(p => p.name);
             const winners = players.filter(p => p.total === maxScore).map(p => p.name);
 
@@ -752,14 +744,11 @@
                 let penalty = 0;
                 if (p.total < threshold) {                
                     penalty = 1;                
-                    // Calculate how many *full* 10-point increments below the threshold they are
                     const pointsBelow = threshold - p.total;        
                     const additionalPenalty = Math.floor(pointsBelow / 10);
-                    
                     penalty += additionalPenalty;
                 }
                 
-                // 3. Check if the current player is in the "losers" lists
                 const loss = losers.includes(p.name) ? 1 : 0;                
 
                 const gTricks = p.history.reduce((a, b) => a + (Number(b.tricks) || 0), 0);
@@ -797,15 +786,15 @@
                     }
                 });
 
-                s.firstPlaceHistory.push(winners.includes(p.name)); // Updated to include all tied winners
-                s.lastPlaceHistory.push(losers.includes(p.name)); // Updated to include all tied losers
+                s.firstPlaceHistory.push(winners.includes(p.name)); 
+                s.lastPlaceHistory.push(losers.includes(p.name)); 
             });
 
             localStorage.setItem(stats, JSON.stringify(tStats));
         } catch (err) {
-        console.error("Save Error:", err);
-        window.isSaving = false; 
-        alert("Error saving stats.");
+            console.error("Save Error:", err);
+            window.isSaving = false; 
+            alert("Error saving stats.");
         }
     }
 
@@ -833,14 +822,6 @@
     }
 
     function loadStats(dataToRender = null, targetIdBody, targetIdHead) {
-        // Use the passed data (allTime) OR fall back to current session players
-        //const sourceData = dataToRender || players;
-
-        //const sorted = Object.entries(sourceData).sort((a, b) => b[1].tPoints - a[1].tPoints);
-
-        // Check if we are rendering "All-Time" to adjust the header
-        const isAllTime = (dataToRender === allTime);        
-
         const tStats = JSON.parse(localStorage.getItem(dataToRender) || "{}");
         const playerNames = Object.keys(tStats).sort((a,b) => tStats[b].tPoints - tStats[a].tPoints);
         if (playerNames.length === 0) {
@@ -848,12 +829,9 @@
             return;
         }
 
-        // const head = document.getElementById('tStats-head');
-        // const body = UI.tStatsBody;
         const head = document.getElementById(targetIdHead);
         const body = document.getElementById(targetIdBody);
         head.innerHTML = `<tr><th>STATISTICS</th>${playerNames.map(n => `<th>${n}</th>`).join('')}</tr>`;
-        // head.innerHTML = `<tr><th style-"width: 50px;">STATISTICS</th>${playerNames.map(n => `<th>${n}</th>`).join('')}</tr>`;
 
         const pointValuesFound = new Set();
         playerNames.forEach(n => {
@@ -927,7 +905,6 @@
         localStorage.removeItem(tournamentStats);
         localStorage.setItem('skip_next_fetch', 'true');
         
-        // If Admin, tell the Google Sheet to wipe itself too
         if (IS_ADMIN && CURRENT_CONFIG.url) {
             await fetch(CURRENT_CONFIG.url, {
                 method: 'POST',                    
@@ -944,8 +921,6 @@
     function showLeaderboard() {
         document.getElementById('setup-view').style.display = 'none';
         document.getElementById('leaderboard-view').style.display = 'block';
-        
-        // Load from local storage for ScoreKeepers
         loadStats(allTime, 'leaderboard-body', 'leaderboard-head');        
     }
 
@@ -958,14 +933,12 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
-            // Retrieve current players/stats
             const stats = JSON.parse(localStorage.getItem('tournamentStats') || "[]");
             if (stats.length === 0) {
                 alert("No stats to save.");
                 return;
             }
 
-            // 1. Prepare Archive Payload with the Tournament ID
             const archiveData = stats.map(player => ({
                 name: player.name,
                 tPoints: player.tPoints,
@@ -975,10 +948,9 @@
                 date: new Date().toLocaleDateString()
             }));
 
-            // 2. Push to Cloud Archive
             const response = await fetch(CONFIG.url, {
                 method: 'POST',
-                mode: 'no-cors', // Use based on your existing CONFIG setup
+                mode: 'no-cors',
                 body: JSON.stringify({ 
                     action: 'archiveTournament', 
                     key: CONFIG.key, 
@@ -986,15 +958,12 @@
                 })
             });
 
-            // 3. Increment Tournament ID and save locally
             currentTournamentID++;
             localStorage.setItem('lastTournamentID', currentTournamentID);
 
-            // 4. Clear current session data locally
             localStorage.removeItem('tournamentStats');
             localStorage.removeItem('gameState'); 
             
-            // 5. Send command to clear the 'Current' sheet on Google Drive
             await fetch(CONFIG.url, {
                 method: 'POST',
                 mode: 'no-cors',
@@ -1002,7 +971,7 @@
             });
 
             alert("Tournament Finalized! ID #" + (currentTournamentID - 1) + " archived.");
-            location.reload(); // Refresh UI to a clean state
+            location.reload();
             
         } catch (e) {
             console.error(e);
