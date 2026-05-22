@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Up & Down the River Tournament</title>
 
-    <link rel="manifest" href="manifest.json">
+    <link lang="manifest" href="manifest.json">
     <meta name="theme-color" content="#2c3e50">
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
@@ -262,7 +262,7 @@
                 <tbody id="leaderboard-body"></tbody>
             </table>
             
-            <button onclick="clearAllTimeHistory()" class="scorekeeper-only btn-danger" style="margin-top:20px; width:auto; padding:8px; font-size:0.7rem;">Clear All-Time History</button>
+            <button id="clear-all-time-btn" onclick="clearAllTimeHistory()" class="scorekeeper-only btn-danger" style="margin-top:20px; width:auto; padding:8px; font-size:0.7rem;">Clear All-Time History</button>
         </div>
     </div>
 
@@ -336,6 +336,11 @@
     };
 
     async function fetchCloudData() {
+        if (!CURRENT_CONFIG.url || CURRENT_CONFIG.url.trim() === "" || CURRENT_CONFIG.url === DEFAULT_URL) {
+            UI.status.innerText = "👁️ Viewer (No Sync URL Set)";
+            return;
+        }
+
         UI.tStatsBody.innerHTML = `
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
             <tr><td colspan="5"><div class="skeleton"></div></td></tr>
@@ -351,7 +356,7 @@
             localStorage.setItem(tournamentStats, JSON.stringify(data));            
             localStorage.setItem(allTime, JSON.stringify(data));
 
-            // CRITICAL FIX: Instantly refresh the visual standings table with new cloud data!
+            // Instantly refresh the visual standings table with new cloud data!
             loadStats(tournamentStats, 'tStats-body', 'tStats-head');
 
             // Reset sync status indicator styling
@@ -373,6 +378,9 @@
 
     async function pushCloudData(data) {
         if (!IS_ADMIN) return;
+        if (!CURRENT_CONFIG.url || CURRENT_CONFIG.url.trim() === "" || CURRENT_CONFIG.url === DEFAULT_URL) {
+            return;
+        }
         UI.status.innerText = "Pushing to Cloud...";
         try {
             const res = await fetch(CURRENT_CONFIG.url, {
@@ -438,6 +446,12 @@
             el.style.display = IS_SCOREKEEPER ? 'block' : 'none';
         });
 
+        // Hide "Clear All-Time History" button on Leaderboard if not Admin
+        const clearBtn = document.getElementById('clear-all-time-btn');
+        if (clearBtn) {
+            clearBtn.style.display = IS_ADMIN ? 'block' : 'none';
+        }
+
         document.getElementById('setup-controls').style.display = IS_SCOREKEEPER ? 'block' : 'none';
         document.getElementById('admin-key-container').style.display = (UI.role.value === 'ADMIN') ? 'block' : 'none';
 
@@ -495,6 +509,11 @@
         
         initUI(); 
         refreshTable();
+    }
+
+    // Explicitly calculate and return the correct Tournament ID from memory or local cache
+    function getActiveTournamentID() {
+        return parseInt(localStorage.getItem('lastTournamentID')) || 1;
     }
 
     function initUI() {
@@ -692,7 +711,9 @@
         localStorage.removeItem('river_v3_currentGame');
         localStorage.setItem('skip_next_fetch', 'true');
 
-        if (IS_ADMIN && CURRENT_CONFIG.url) {
+        const activeTID = getActiveTournamentID();
+
+        if (IS_ADMIN && CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
             try {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
@@ -700,7 +721,7 @@
                         key: CURRENT_CONFIG.key,
                         type: "ARCHIVE_GAME",
                         gameData: { players: players },
-                        tournamentID: currentTournamentID
+                        tournamentID: activeTID
                     })
                 });
             } catch (cloudErr) {
@@ -900,9 +921,11 @@
     }
 
     async function clearStats() {        
-        if (!confirm("Are you sure? This will wipe records.")) return;
+        if (!confirm("Are you sure? This will wipe active tournament standings and increment the Tournament ID for subsequent games.")) return;
         
+        // 1. Wipe local active standings
         localStorage.removeItem(tournamentStats);
+
         // 2. IMPORTANT FIX: Increment the local tournament ID so next games don't append to this old tournament's group!
         currentTournamentID++;
         localStorage.setItem('lastTournamentID', currentTournamentID);
@@ -910,7 +933,7 @@
         // Set skip fetch flag to allow local resets to display clean empty tables immediately
         localStorage.setItem('skip_next_fetch', 'true');
         
-        if (IS_ADMIN && CURRENT_CONFIG.url) {
+        if (IS_ADMIN && CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
             await fetch(CURRENT_CONFIG.url, {
                 method: 'POST',                    
                 body: JSON.stringify({
@@ -938,7 +961,6 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
-            // Retrieve current tournament stats from 'river_v3_tStats' (and not the mismatched 'tournamentStats')
             const statsObj = JSON.parse(localStorage.getItem(tournamentStats) || "{}");
             const playerKeys = Object.keys(statsObj);
 
@@ -947,7 +969,8 @@
                 return;
             }
 
-            // Convert the local stats Object into the expected flat Array format for 'archiveTournament'
+            const activeTID = getActiveTournamentID();
+
             const archiveData = playerKeys.map(name => {
                 const p = statsObj[name];
                 return {
@@ -955,14 +978,14 @@
                     tPoints: p.tPoints || 0,
                     wins: getStreak(p.firstPlaceHistory || [], true),
                     totalScore: p.gamePoints || 0,
-                    tournamentID: currentTournamentID,
+                    tournamentID: activeTID,
                     date: new Date().toLocaleDateString()
                 };
             });
 
             // Push to Cloud Archive (execute post request securely using CURRENT_CONFIG)
-            if (CURRENT_CONFIG.url) {
-                const response = await fetch(CURRENT_CONFIG.url, {
+            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
+                await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
                     body: JSON.stringify({ 
                         action: 'archiveTournament', 
@@ -981,7 +1004,7 @@
             localStorage.removeItem('river_v3_currentGame'); 
             
             // Clean 'Current' sheet on Google Drive via CLEAR_STATS payload
-            if (CURRENT_CONFIG.url) {
+            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'CLEAR_STATS', key: CURRENT_CONFIG.key })
@@ -997,11 +1020,45 @@
         }
     }      
        
-    function clearAllTimeHistory() {
-        if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?") && 
+    async function clearAllTimeHistory() {
+        if (!IS_ADMIN) {
+            alert("Error: Only the Admin role can wipe all-time history.");
+            return;
+        }
+
+        if (confirm("DANGER: This will permanently delete ALL-TIME history from BOTH local storage and the Google Sheet. Proceed?") && 
             confirm("Are you absolutely sure? This cannot be undone.")) {
+            
+            // 1. Wipe local browser cache for All-Time history
             localStorage.removeItem(allTime);            
             loadStats(allTime, 'leaderboard-body', 'leaderboard-head');
+
+            // 2. Wipe the Cloud Sheets permanently
+            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
+                try {
+                    UI.status.innerText = "Wiping Cloud Database...";
+                    const response = await fetch(CURRENT_CONFIG.url, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            key: CURRENT_CONFIG.key,
+                            type: "CLEAR_ALL_TIME"
+                        })
+                    });
+                    if (response.ok) {
+                        UI.status.innerText = "✓ Cloud Database Wiped";
+                        alert("Cloud database and local history cleared successfully!");
+                    } else {
+                        throw new Error("Wipe response failed");
+                    }
+                } catch (e) {
+                    console.error("Cloud Wipe Error:", e);
+                    alert("Local data cleared. Cloud update failed: " + e.message);
+                }
+            } else {
+                alert("Local data cleared. No sync URL configured to clear cloud.");
+            }
+
+            location.reload();
         }
     }
 </script>
