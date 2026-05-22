@@ -351,7 +351,7 @@
             localStorage.setItem(tournamentStats, JSON.stringify(data));            
             localStorage.setItem(allTime, JSON.stringify(data));
 
-            // Instantly refresh the visual standings table with new cloud data!
+            // CRITICAL FIX: Instantly refresh the visual standings table with new cloud data!
             loadStats(tournamentStats, 'tStats-body', 'tStats-head');
 
             // Reset sync status indicator styling
@@ -495,11 +495,6 @@
         
         initUI(); 
         refreshTable();
-    }
-
-    // Explicitly calculate and return the correct Tournament ID from memory or local cache
-    function getActiveTournamentID() {
-        return parseInt(localStorage.getItem('lastTournamentID')) || 1;
     }
 
     function initUI() {
@@ -697,9 +692,7 @@
         localStorage.removeItem('river_v3_currentGame');
         localStorage.setItem('skip_next_fetch', 'true');
 
-        const activeTID = getActiveTournamentID();
-
-         if (IS_ADMIN && CURRENT_CONFIG.url) {
+        if (IS_ADMIN && CURRENT_CONFIG.url) {
             try {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
@@ -907,11 +900,9 @@
     }
 
     async function clearStats() {        
-        if (!confirm("Are you sure? This will wipe active tournament standings and increment the Tournament ID for subsequent games.")) return;
+        if (!confirm("Are you sure? This will wipe records.")) return;
         
-        // 1. Wipe local active standings
         localStorage.removeItem(tournamentStats);
-
         // 2. IMPORTANT FIX: Increment the local tournament ID so next games don't append to this old tournament's group!
         currentTournamentID++;
         localStorage.setItem('lastTournamentID', currentTournamentID);
@@ -947,6 +938,7 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
+            // Retrieve current tournament stats from 'river_v3_tStats' (and not the mismatched 'tournamentStats')
             const statsObj = JSON.parse(localStorage.getItem(tournamentStats) || "{}");
             const playerKeys = Object.keys(statsObj);
 
@@ -955,8 +947,7 @@
                 return;
             }
 
-            const activeTID = getActiveTournamentID();
-
+            // Convert the local stats Object into the expected flat Array format for 'archiveTournament'
             const archiveData = playerKeys.map(name => {
                 const p = statsObj[name];
                 return {
@@ -971,7 +962,7 @@
 
             // Push to Cloud Archive (execute post request securely using CURRENT_CONFIG)
             if (CURRENT_CONFIG.url) {
-                await fetch(CURRENT_CONFIG.url, {
+                const response = await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
                     body: JSON.stringify({ 
                         action: 'archiveTournament', 
@@ -1006,45 +997,11 @@
         }
     }      
        
-    async function clearAllTimeHistory() {
-        if (!IS_ADMIN) {
-            alert("Error: Only the Admin role can wipe all-time history.");
-            return;
-        }
-
-        if (confirm("DANGER: This will permanently delete ALL-TIME history from BOTH local storage and the Google Sheet. Proceed?") && 
+    function clearAllTimeHistory() {
+        if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?") && 
             confirm("Are you absolutely sure? This cannot be undone.")) {
-            
-            // 1. Wipe local browser cache for All-Time history
             localStorage.removeItem(allTime);            
             loadStats(allTime, 'leaderboard-body', 'leaderboard-head');
-
-            // 2. Wipe the Cloud Sheets permanently
-            if (CURRENT_CONFIG.url && CURRENT_CONFIG.url.trim() !== "" && CURRENT_CONFIG.url !== DEFAULT_URL) {
-                try {
-                    UI.status.innerText = "Wiping Cloud Database...";
-                    const response = await fetch(CURRENT_CONFIG.url, {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            key: CURRENT_CONFIG.key,
-                            type: "CLEAR_ALL_TIME"
-                        })
-                    });
-                    if (response.ok) {
-                        UI.status.innerText = "✓ Cloud Database Wiped";
-                        alert("Cloud database and local history cleared successfully!");
-                    } else {
-                        throw new Error("Wipe response failed");
-                    }
-                } catch (e) {
-                    console.error("Cloud Wipe Error:", e);
-                    alert("Local data cleared. Cloud update failed: " + e.message);
-                }
-            } else {
-                alert("Local data cleared. No sync URL configured to clear cloud.");
-            }
-
-            location.reload();
         }
     }
 </script>
