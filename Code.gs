@@ -38,6 +38,39 @@ function doPost(e) {
       payload = e.parameter; 
     }
 
+    // --- HANDLE FULL ALL-TIME RESET COMMAND ---
+    if (payload.type === "CLEAR_ALL_TIME") {
+      if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized Reset Attempt");
+      
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      
+      // 1. Clear the Game Archive tab (Rows 2 to End)
+      const archiveSheet = ss.getSheetByName("Game Archive");
+      if (archiveSheet && archiveSheet.getLastRow() > 1) {
+        archiveSheet.getRange(2, 1, archiveSheet.getLastRow() - 1, archiveSheet.getLastColumn()).clearContent(); 
+      }
+      
+      // 2. Reset the internal game counter to zero
+      PropertiesService.getScriptProperties().setProperty('game_counter', "0");
+      
+      // 3. Clear the Tournament Stats visual sheet
+      const statsSheet = ss.getSheetByName("Tournament Stats");
+      if (statsSheet) {
+        statsSheet.clear();
+      }
+
+      // 4. Clear the Leaderboard visual sheet
+      const leaderboardSheet = ss.getSheetByName("Leaderboard");
+      if (leaderboardSheet) {
+        leaderboardSheet.clear();
+      }
+
+      // 5. Wipe the Turbo Cache so the next 'GET' calculates from scratch
+      PropertiesService.getScriptProperties().deleteProperty('STATS_SNAPSHOT');
+      
+      return ContentService.createTextOutput("Cloud All-Time History Wiped Successfully").setMimeType(ContentService.MimeType.TEXT);
+    }
+
     // --- HANDLE RESET COMMAND (Current Tournament Only) ---
     if (payload.type === "CLEAR_STATS") {
       if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized Reset Attempt");
