@@ -997,11 +997,31 @@
         }
     }      
        
-    function clearAllTimeHistory() {
-        if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?") && 
-            confirm("Are you absolutely sure? This cannot be undone.")) {
+    async function clearAllTimeHistory() {
+        if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?")) {
             localStorage.removeItem(allTime);            
             loadStats(allTime, 'leaderboard-body', 'leaderboard-head');
+            
+        // 2. Wipe the Cloud Sheets permanently            
+            try {
+                UI.status.innerText = "Wiping Cloud Database...";
+                const response = await fetch(CURRENT_CONFIG.url, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        key: CURRENT_CONFIG.key,
+                        type: "CLEAR_ALL_TIME"
+                    })
+                });
+                if (response.ok) {
+                    UI.status.innerText = "✓ Cloud Database Wiped";
+                    alert("Cloud database and local history cleared successfully!");
+                } else {
+                    throw new Error("Wipe response failed");
+                }
+            } catch (e) {
+                console.error("Cloud Wipe Error:", e);
+                alert("Local data cleared. Cloud update failed: " + e.message);
+            }
         }
     }
 </script>
