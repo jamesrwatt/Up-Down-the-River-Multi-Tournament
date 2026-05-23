@@ -65,9 +65,16 @@ function doPost(e) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       
       // 1. DO NOT CLEAR the Game Archive anymore (retained as an all-time cumulative history)
+      const dataTournament = {};       
+      const dataString = JSON.stringify(dataTournament);
+      
+      PropertiesService.getScriptProperties().setProperty('STATS_SNAPSHOT', dataString);
+      
+      updateStatsSheet(dataTournament, "Tournament Stats");             
+      Logger.log("Manual Refresh Complete.");      
       
       // 2. Reset the internal game counter to zero (or keep it if you want it to increment continuously)
-      PropertiesService.getScriptProperties().setProperty('game_counter', "0");
+      syncGameCounter();
       
       // 3. Clear the Tournament Stats visual sheet (Current Standings only)
       const statsSheet = ss.getSheetByName("Tournament Stats");
