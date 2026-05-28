@@ -903,7 +903,7 @@
         if (!confirm("Are you sure? This will wipe records.")) return;
         
         localStorage.removeItem(tournamentStats);
-        // 2. IMPORTANT FIX: Increment the local tournament ID so next games don't append to this old tournament's group!
+        // Increment the local tournament ID so next games don't append to this old tournament's group!
         currentTournamentID++;
         localStorage.setItem('lastTournamentID', currentTournamentID);
         
@@ -938,7 +938,7 @@
         if (!confirm("Are you sure you want to finalize this tournament and archive results?")) return;
 
         try {
-            // Retrieve current tournament stats from 'river_v3_tStats' (and not the mismatched 'tournamentStats')
+            // Retrieve current tournament stats from 'river_v3_tStats'
             const statsObj = JSON.parse(localStorage.getItem(tournamentStats) || "{}");
             const playerKeys = Object.keys(statsObj);
 
@@ -984,7 +984,7 @@
             if (CURRENT_CONFIG.url) {
                 await fetch(CURRENT_CONFIG.url, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'CLEAR_STATS', key: CURRENT_CONFIG.key })
+                    body: JSON.stringify({ action: 'CLEAR_STATS', type: 'CLEAR_STATS', key: CURRENT_CONFIG.key })
                 });
             }
 
@@ -999,10 +999,16 @@
        
     async function clearAllTimeHistory() {
         if (confirm("DANGER: This will permanently delete ALL-TIME history. Proceed?")) {
+            // Wipe everything from local memory so the visual displays clear out immediately
             localStorage.removeItem(allTime);            
+            localStorage.removeItem(tournamentStats);
+            currentTournamentID = 1;
+            localStorage.setItem('lastTournamentID', currentTournamentID);
+
             loadStats(allTime, 'leaderboard-body', 'leaderboard-head');
+            loadStats(tournamentStats, 'tStats-body', 'tStats-head');
             
-        // 2. Wipe the Cloud Sheets permanently            
+            // Wipe the Cloud Sheets permanently            
             try {
                 UI.status.innerText = "Wiping Cloud Database...";
                 const response = await fetch(CURRENT_CONFIG.url, {
