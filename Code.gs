@@ -50,21 +50,37 @@ function doPost(e) {
         archiveSheet.getRange(2, 1, archiveSheet.getLastRow() - 1, archiveSheet.getLastColumn()).clearContent(); 
       }
 
+      // 2. Clear Leaderboard visual sheet
+      const lbSheet = ss.getSheetByName("Leaderboard");
+      if (lbSheet) {
+        lbSheet.clear();
+      }
+
+      // 3. Clear Tournament Stats visual sheet
+      const statsSheet = ss.getSheetByName("Tournament Stats");
+      if (statsSheet) {
+        statsSheet.clear();
+      }
+
+      // 4. Reset counter and tournament ID to starting values
+      const scriptProp = PropertiesService.getScriptProperties();
+      scriptProp.setProperty('game_counter', "0");
+      scriptProp.setProperty('tournament_id', "1");
+
       manualStatsRefresh();
 
       // 5. Wipe the Turbo Cache so the next 'GET' calculates from scratch
-      PropertiesService.getScriptProperties().deleteProperty('STATS_SNAPSHOT');
+      scriptProp.deleteProperty('STATS_SNAPSHOT');
       
       return ContentService.createTextOutput("Cloud All-Time History Wiped Successfully").setMimeType(ContentService.MimeType.TEXT);
     }
 
     // --- HANDLE RESET COMMAND (Current Tournament Only) ---
-    if (payload.type === "CLEAR_STATS") {
+    if (payload.type === "CLEAR_STATS" || payload.action === "CLEAR_STATS") {
       if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized Reset Attempt");
       
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       
-      // 1. DO NOT CLEAR the Game Archive anymore (retained as an all-time cumulative history)
       const dataTournament = {};       
       const dataString = JSON.stringify(dataTournament);
       
@@ -73,16 +89,16 @@ function doPost(e) {
       updateStatsSheet(dataTournament, "Tournament Stats");             
       Logger.log("Manual Refresh Complete.");      
       
-      // 2. Reset the internal game counter to zero (or keep it if you want it to increment continuously)
+      // Sync counter and dynamic tournament IDs
       syncGameCounter();
       
-      // 3. Clear the Tournament Stats visual sheet (Current Standings only)
+      // Clear the Tournament Stats visual sheet (Current Standings only)
       const statsSheet = ss.getSheetByName("Tournament Stats");
       if (statsSheet) {
         statsSheet.clear();
       }
 
-      // 4. Wipe the Turbo Cache so the next 'GET' calculates from scratch
+      // Wipe the Turbo Cache so the next 'GET' calculates from scratch
       PropertiesService.getScriptProperties().deleteProperty('STATS_SNAPSHOT');
       
       return ContentService.createTextOutput("Current Tournament Standings Reset Successfully").setMimeType(ContentService.MimeType.TEXT);
@@ -131,15 +147,33 @@ function doPost(e) {
             ]);
         });
 
+        // Clear current tournament sheet values visual aspect
+        const statsSheet = ss.getSheetByName("Tournament Stats");
+        if (statsSheet) {
+          statsSheet.clear();
+        }
+
+        // Increment tournament ID globally in Properties
+        const scriptProp = PropertiesService.getScriptProperties();
+        let currentTID = parseInt(scriptProp.getProperty('tournament_id') || "1");
+        scriptProp.setProperty('tournament_id', (currentTID + 1).toString());
+
         const allTimeData = getRecomputedStats(); 
-        PropertiesService.getScriptProperties().setProperty('STATS_SNAPSHOT', JSON.stringify(allTimeData));
+        scriptProp.setProperty('STATS_SNAPSHOT', JSON.stringify(allTimeData));
         
         return ContentService.createTextOutput("Tournament Archived").setMimeType(ContentService.MimeType.TEXT);
     }
 
-    if (payload.action === 'archiveTournament') {
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tournament_History');
-      payload.data.forEach(function(row) {
+    if (payload.action === 'archiveTournament' || payload.type === 'archiveTournament') {
+      if (payload.key !== ADMIN_KEY) throw new Error("Unauthorized");
+      
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName('Tournament_History') || ss.insertSheet('Tournament_History');
+      
+      // Normalize array input
+      let rowsData = typeof payload.data === "string" ? JSON.parse(payload.data) : payload.data;
+      
+      rowsData.forEach(function(row) {
         sheet.appendRow([
           row.tournamentID, 
           row.date, 
@@ -149,7 +183,19 @@ function doPost(e) {
           row.totalScore 
         ]);
       });
-      return ContentService.createTextOutput(JSON.stringify({success: true}));
+
+      // Clear the "Tournament Stats" sheet layout since it has been finalized
+      const statsSheet = ss.getSheetByName("Tournament Stats");
+      if (statsSheet) {
+        statsSheet.clear();
+      }
+
+      // Increment tournament ID globally in Properties
+      const scriptProp = PropertiesService.getScriptProperties();
+      let currentTID = parseInt(scriptProp.getProperty('tournament_id') || "1");
+      scriptProp.setProperty('tournament_id', (currentTID + 1).toString());
+
+      return ContentService.createTextOutput(JSON.stringify({success: true})).setMimeType(ContentService.MimeType.JSON);
     }
 
   } catch (f) {
@@ -462,6 +508,9 @@ function manualStatsRefresh() {
   syncGameCounter();
 }
 
+/**
+ * Keeps game counters and tournament IDs matching the sheets after changes.
+ */
 function syncGameCounter() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Game Archive");
@@ -469,18 +518,25 @@ function syncGameCounter() {
   
   if (!sheet || sheet.getLastRow() < 2) {
     scriptProp.setProperty('game_counter', "0");
-    Logger.log("No games found. Counter set to 0.");
+    scriptProp.setProperty('tournament_id', "1");
+    Logger.log("No games found. Counter set to 0. Tournament ID set to 1.");
     return;
   }
 
   const lastRow = sheet.getLastRow();
   const lastGameNum = sheet.getRange(lastRow, 2).getValue();
+  const lastTournamentID = sheet.getRange(lastRow, 1).getValue();
 
   if (!isNaN(lastGameNum)) {
     scriptProp.setProperty('game_counter', lastGameNum.toString());
     Logger.log("Sync Complete. Next game will be #" + (Number(lastGameNum) + 1));
   } else {
-    Logger.log("Error: Last row in Column A is not a number.");
+    Logger.log("Error: Last row in Column B is not a number.");
+  }
+
+  if (lastTournamentID && !isNaN(lastTournamentID)) {
+    scriptProp.setProperty('tournament_id', lastTournamentID.toString());
+    Logger.log("Tournament ID Synced. Current active tournament set to #" + lastTournamentID);
   }
 }
 
